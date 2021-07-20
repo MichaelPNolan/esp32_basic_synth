@@ -1,9 +1,10 @@
 # esp32_basic_synth
 ESP32 based simple synthesizer project
+Fork here is by Michael Nolan - enormous gratitude to project originator. Homage, this I'm forking for my own learning to use Github and work on it from other places.
 
-The project can be seen in my video https://youtu.be/5XVK5MOKmZw
+The project can be seen in Marcel-License video https://youtu.be/5XVK5MOKmZw
 
----
+--- This text is from Marcel but I'm going to change a lot of this ... to match my variation if necessary.
 The project has been tested on
 - ESP32 Audio Kit V2.2 (using ESP32-A1S)
 - ESP32 DEVKIT - DOIT (actually only supporting esp32\1.0.4 library)
