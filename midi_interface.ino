@@ -10,6 +10,12 @@
  * a uart compatible signal
  */
 
+#ifdef ESP32_AUDIO_KIT
+#define RXD2 22 /* U2RRXD */
+#else
+#define RXD2 16 /* U2RRXD */
+//#define TXD2 17
+#endif
 
 /* use define to dump midi data */
 //#define DUMP_SERIAL2_TO_SERIAL
@@ -29,7 +35,6 @@ struct midiControllerMapping
 
 struct midiMapping_s
 {
-    void (*rawMsg)(uint8_t *msg);
     void (*noteOn)(uint8_t ch, uint8_t note, float vel);
     void (*noteOff)(uint8_t ch, uint8_t note);
     void (*pitchBend)(uint8_t ch, float bend);
@@ -42,7 +47,7 @@ struct midiMapping_s
 extern struct midiMapping_s midiMapping; /* definition in z_config.ino */
 
 /* constant to normalize midi value to 0.0 - 1.0f */
-#define NORM127MUL  0.007874f
+#define NORM127MUL	0.007874f
 
 inline void Midi_NoteOn(uint8_t ch, uint8_t note, uint8_t vel)
 {
@@ -94,6 +99,38 @@ inline void Midi_ControlChange(uint8_t channel, uint8_t data1, uint8_t data2)
             midiMapping.modWheel(channel, (float)data2 * NORM127MUL);
         }
     }
+
+#if 0
+    if (data1 == 17)
+    {
+        if (channel < 10)
+        {
+            Synth_SetSlider(channel,  data2 * NORM127MUL);
+        }
+    }
+
+    if (data1 == 17)
+    {
+        if (channel < 10)
+        {
+            Synth_SetSlider(channel,  data2 * NORM127MUL);
+        }
+    }
+    if ((data1 == 18) && (channel == 1))
+    {
+        Synth_SetSlider(8,  data2 * NORM127MUL);
+    }
+
+    if ((data1 == 16) && (channel < 9))
+    {
+        Synth_SetRotary(channel, data2 * NORM127MUL);
+
+    }
+    if ((data1 == 18) && (channel == 0))
+    {
+        Synth_SetRotary(8,  data2 * NORM127MUL);
+    }
+#endif
 }
 
 inline void Midi_PitchBend(uint8_t ch, uint16_t bend)
@@ -108,7 +145,7 @@ inline void Midi_PitchBend(uint8_t ch, uint16_t bend)
 /*
  * function will be called when a short message has been received over midi
  */
-inline void Midi_HandleShortMsg(uint8_t *data, uint8_t cable)
+inline void HandleShortMsg(uint8_t *data)
 {
     uint8_t ch = data[0] & 0x0F;
 
@@ -134,7 +171,7 @@ inline void Midi_HandleShortMsg(uint8_t *data, uint8_t cable)
         break;
     /* pitchbend */
     case 0xe0:
-        Midi_PitchBend(ch, ((((uint16_t)data[1])) + ((uint16_t)data[2] << 8)));
+        Midi_PitchBend(ch, ((((uint16_t)data[1]) ) + ((uint16_t)data[2] << 8)));
         break;
     }
 }
@@ -189,7 +226,7 @@ void Midi_CheckSerial2(void)
 #ifdef DUMP_SERIAL2_TO_SERIAL
             Serial.printf(">%02x %02x %02x\n", inMsg[0], inMsg[1], inMsg[2]);
 #endif
-            Midi_HandleShortMsg(inMsg, 0);
+            HandleShortMsg(inMsg);
             inMsgIndex = 0;
         }
 
@@ -245,13 +282,8 @@ void Midi_CheckSerial(void)
 
         if (inMsgIndex >= 3)
         {
-            Midi_HandleShortMsg(inMsg, 1);
+            HandleShortMsg(inMsg);
             inMsgIndex = 0;
-
-            if (midiMapping.rawMsg != NULL)
-            {
-                midiMapping.rawMsg(inMsg);
-            }
         }
 
         /*
@@ -283,26 +315,8 @@ void Midi_Process()
 #endif
 }
 
+
 void Midi_SendShortMessage(uint8_t *msg)
 {
     Serial2.write(msg, 3);
 }
-
-void Midi_SendRaw(uint8_t *msg)
-{
-    /* sysex */
-    if (msg[0] == 0xF0)
-    {
-        int i = 2;
-        while (msg[i] != 0xF7)
-        {
-            i++;
-        }
-        Serial2.write(msg, i + 1);
-    }
-    else
-    {
-        Serial2.write(msg, 3);
-    }
-}
-

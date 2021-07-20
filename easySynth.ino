@@ -242,7 +242,7 @@ void Synth_Init()
     selectedWaveForm =  saw;
     selectedWaveForm2 =  saw;
 #else
-    selectedWaveForm =  pulse;
+    selectedWaveForm =  sine; //was pulse
     selectedWaveForm2 =  silence;
 #endif
 
@@ -595,7 +595,7 @@ inline void Synth_NoteOn(uint8_t ch, uint8_t note, float vel)
      */
     if ((voice == NULL) || (osc == NULL))
     {
-        //Serial.printf("voc: %d, osc: %d\n", voc_act, osc_act);
+        Serial.printf("voc: %d, osc: %d\n", voc_act, osc_act);
         return ;
     }
 
@@ -853,4 +853,3 @@ void Synth_SetParam(uint8_t slider, float value)
         break;
     }
 }
-

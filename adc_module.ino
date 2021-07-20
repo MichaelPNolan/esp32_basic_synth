@@ -10,12 +10,26 @@
  * Reference: https://youtu.be/l8GrNxElRkc
  */
 
+/* Notes by Michael - hack version of this 
+ * Requires Boardmanager 1.0.4 or earlier of ESP32
+ * doing math
+*/
+
+#define upButton 12 // for use with a single POT to select which parameter
+#define downButton 4 // ditto
+bool upButtonState, downButtonState, lastUpButtonState, lastDownButtonState;
+unsigned long lastUBDebounceTime,lastDBDebounceTime;
+unsigned long debounceDelay = 50; 
+
 struct adc_to_midi_s
 {
     uint8_t ch;
     uint8_t cc;
 };
-
+int  analogueParamSet = 0;
+int  waveformParamSet = 0;
+static float adcSingle,adcSingleAve; // added by Michael for use when you don't have analogue multiplexer
+extern float adcSetpoint=0;
 extern struct adc_to_midi_s adcToMidiLookUp[]; /* definition in z_config.ino */
 
 uint8_t lastSendVal[ADC_TO_MIDI_LOOKUP_SIZE];  /* define ADC_TO_MIDI_LOOKUP_SIZE in top level file */
@@ -28,6 +42,7 @@ uint8_t lastSendVal[ADC_TO_MIDI_LOOKUP_SIZE];  /* define ADC_TO_MIDI_LOOKUP_SIZE
 //#define ADC_DEBUG_CHANNEL0_DATA
 
 static float adcChannelValue[ADC_INPUTS];
+
 
 void AdcMul_Init(void)
 {
@@ -172,4 +187,124 @@ void AdcMul_Process(void)
 float *AdcMul_GetValues(void)
 {
     return adcChannelValue;
+}
+
+
+bool  AdcSimple(){
+    unsigned long int pinValue = 0;
+    float delta, error;
+    bool midiMsg = false;
+    
+    //for(int i=0; i < 100; i++) //oversample
+          pinValue += analogRead(34);
+          pinValue += analogRead(34);
+          pinValue += analogRead(34);
+          pinValue += analogRead(34);
+          pinValue += analogRead(34);
+          pinValue += analogRead(34);
+    pinValue = pinValue / 6;
+    adcSingle = float(pinValue)/4096.0f; //(pinValue/10)*10
+    delta = adcSingleAve - adcSingle; //floating point absolute get rid of signed
+    error = 0.009f+(0.012f*(adcSingle+0.1));  //previous weird idea error = 0.03*((adcSingle+0.25)*0.75); 
+    
+    
+    if (fabs(delta) > error ){
+       if(adcSetpoint != adcSingleAve) 
+        {
+          adcSetpoint = adcSingleAve;
+          Serial.println("ADC read: " + String(adcSetpoint));
+          adcChannelValue[analogueParamSet] = adcSetpoint;
+          Synth_SetParam(analogueParamSet, adcChannelValue[analogueParamSet]*1.2);
+          midiMsg = true;
+          return 1;
+        } 
+      
+      
+    } else {
+      
+      return 0;
+    }
+    adcSingleAve = (adcSingleAve+adcSingle)/2;
+/*
+    if (midiMsg)
+    {
+        uint32_t midiValueU7 = (adcChannelValue[analogueParamSet] * 127.999);
+        if (analogueParamSet < ADC_TO_MIDI_LOOKUP_SIZE)
+        {
+            #ifdef ADC_INVERT
+            uint8_t idx = (ADC_INPUTS - 1) -analogueParamSet;
+            #else
+            uint8_t idx = analogueParamSet;
+            #endif
+            if (lastSendVal[idx] != midiValueU7)
+            {
+                Midi_ControlChange(adcToMidiLookUp[idx].ch, adcToMidiLookUp[idx].cc, midiValueU7);
+                lastSendVal[idx] = midiValueU7;
+            }
+        }
+    } */
+}
+
+void setupButtons(){
+  pinMode(upButton, INPUT_PULLUP);  //pinMode(2, INPUT_PULLUP);
+  pinMode(downButton, INPUT_PULLUP);
+
+}
+
+void processButtons(){
+
+  // read the state of the switch into a local variable:
+  int readUpButton = digitalRead(upButton);
+  int readDownButton = digitalRead(downButton);
+  // check to see if you just pressed the button
+  // (i.e. the input went from LOW to HIGH), and you've waited long enough
+  // since the last press to ignore any noise:
+
+  // If the switch changed, due to noise or pressing:
+  if (readUpButton != lastUpButtonState) {
+    // reset the debouncing timer
+    lastUBDebounceTime = millis();
+  }
+   if (readDownButton != lastDownButtonState) {
+    // reset the debouncing timer
+    lastDBDebounceTime = millis();
+  }
+
+  if ((millis() - lastUBDebounceTime) > debounceDelay) {
+
+    // if the button state has changed:
+    if (readUpButton != upButtonState) {
+      upButtonState = readUpButton;
+
+      // only toggle the LED if the new button state is HIGH
+      if (upButtonState == LOW) {
+         waveformParamSet = waveformParamSet + 1; //analogueParamSet++;
+         if (waveformParamSet > 7) waveformParamSet=0; //analogueParamSet=0;
+         
+         Synth_SetParam(8, float(waveformParamSet/7.0f));  //SYNTH_PARAM_WAVEFORM_1 = 8 unless unison mode in the its detune
+         //Synth_SetParam(9, float(waveformParamSet/7.0f));
+         Serial.println("WaveformSet: "+ String(waveformParamSet));
+      }
+    }
+  }
+  if ((millis() - lastDBDebounceTime) > debounceDelay) {
+
+    // if the button state has changed:
+    if (readDownButton != downButtonState) {
+      downButtonState = readDownButton;
+
+      // only toggle the LED if the new button state is HIGH
+      if (downButtonState == HIGH) {
+         analogueParamSet = analogueParamSet - 1;
+         if (analogueParamSet < 0) analogueParamSet=7;
+         if (analogueParamSet > 7) analogueParamSet=0;
+         Serial.print("ParamSet: ");
+         Serial.println(analogueParamSet);
+      }
+    }
+  }
+    // save the reading. Next time through the loop, it'll be the lastButtonState:
+  lastUpButtonState = readUpButton;
+  lastDownButtonState = readDownButton;
+
 }

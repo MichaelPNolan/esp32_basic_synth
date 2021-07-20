@@ -14,7 +14,7 @@
 
 
 
-const i2s_port_t i2s_port_number = I2S_NUM_0;
+const i2s_port_t i2s_num = I2S_NUM_0; // i2s port number
 
 #ifdef I2S_NODAC
 
@@ -24,7 +24,7 @@ bool i2s_write_sample(uint32_t sample);
 bool i2s_write_sample(uint32_t sample)
 {
     static size_t bytes_written = 0;
-    i2s_write(i2s_port_number, (const char *)&sample, 4, &bytes_written, portMAX_DELAY);
+    i2s_write((i2s_port_t)i2s_num, (const char *)&sample, 4, &bytes_written, portMAX_DELAY);
 
     if (bytes_written > 0)
     {
@@ -65,7 +65,7 @@ bool i2s_write_stereo_samples(float *fl_sample, float *fr_sample)
 bool i2s_write_sample_32ch2(uint64_t sample)
 {
     static size_t bytes_written = 0;
-    i2s_write(i2s_port_number, (const char *)&sample, 8, &bytes_written, portMAX_DELAY);
+    i2s_write((i2s_port_t)i2s_num, (const char *)&sample, 8, &bytes_written, portMAX_DELAY);
 
     if (bytes_written > 0)
     {
@@ -82,20 +82,21 @@ bool i2s_write_stereo_samples(float *fl_sample, float *fr_sample)
 {
 
 #ifdef SAMPLE_SIZE_24BIT
-#if 0
-    static union sampleTUNT
-    {
-        uint8_t sample[8];
-        int32_t ch[2];
-    } sampleDataU;
-#else
     static union sampleTUNT
     {
         int32_t ch[2];
         uint8_t bytes[8];
     } sampleDataU;
 #endif
+
+#ifdef SAMPLE_SIZE_8BIT
+    static union sampleTUNT
+    {
+        uint16_t sample;
+        int8_t ch[2];
+    } sampleDataU;
 #endif
+
 #ifdef SAMPLE_SIZE_16BIT
     static union sampleTUNT
     {
@@ -103,6 +104,7 @@ bool i2s_write_stereo_samples(float *fl_sample, float *fr_sample)
         int16_t ch[2];
     } sampleDataU;
 #endif
+
 #ifdef SAMPLE_SIZE_32BIT
     static union sampleTUNT
     {
@@ -114,6 +116,12 @@ bool i2s_write_stereo_samples(float *fl_sample, float *fr_sample)
     /*
      * using RIGHT_LEFT format
      */
+    
+#ifdef SAMPLE_SIZE_8BIT
+    sampleDataU.ch[0] = int8_t(*fr_sample * 255.0f); // some bits missing here 
+    sampleDataU.ch[1] = int8_t(*fl_sample * 255.0f);
+#endif
+
 #ifdef SAMPLE_SIZE_16BIT
     sampleDataU.ch[0] = int16_t(*fr_sample * 16383.0f); /* some bits missing here */
     sampleDataU.ch[1] = int16_t(*fl_sample * 16383.0f);
@@ -126,11 +134,15 @@ bool i2s_write_stereo_samples(float *fl_sample, float *fr_sample)
     static size_t bytes_written = 0;
     static size_t bytes_read = 0;
 
+#ifdef SAMPLE_SIZE_8BIT
+    i2s_write(i2s_num, (const char *)&sampleDataU.sample, 2, &bytes_written, portMAX_DELAY);
+#endif
+
 #ifdef SAMPLE_SIZE_16BIT
-    i2s_write(i2s_port_number, (const char *)&sampleDataU.sample, 4, &bytes_written, portMAX_DELAY);
+    i2s_write(i2s_num, (const char *)&sampleDataU.sample, 4, &bytes_written, portMAX_DELAY);
 #endif
 #ifdef SAMPLE_SIZE_32BIT
-    i2s_write(i2s_port_number, (const char *)&sampleDataU.sample, 8, &bytes_written, portMAX_DELAY);
+    i2s_write(i2s_num, (const char *)&sampleDataU.sample, 8, &bytes_written, portMAX_DELAY);
 #endif
 
     if (bytes_written > 0)
@@ -151,15 +163,18 @@ bool i2s_write_stereo_samples(float *fl_sample, float *fr_sample)
  * i2s configuration
  */
 
-i2s_config_t i2s_configuration =
+i2s_config_t i2s_config =
 {
-    .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
+    .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX ),
     .sample_rate = SAMPLE_RATE,
 #ifdef I2S_NODAC
     .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
     .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
     .communication_format = (i2s_comm_format_t)I2S_COMM_FORMAT_I2S_MSB,
 #else
+#ifdef SAMPLE_SIZE_8BIT
+    .bits_per_sample = I2S_BITS_PER_SAMPLE_8BIT,
+#endif
 #ifdef SAMPLE_SIZE_16BIT
     .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
 #endif
@@ -192,6 +207,12 @@ i2s_pin_config_t pins =
     .ws_io_num =  IIS_LCLK,
     .data_out_num = IIS_DSIN,
     .data_in_num = IIS_DSOUT
+#endif
+#ifdef INTERNAL_DAC  
+    .bck_io_num = 26, //this is BCK pin
+    .ws_io_num = 25, // this is LRCK pin aka word clock
+    .data_out_num = 22, // this is DATA output pin
+    .data_in_num = I2S_PIN_NO_CHANGE   //Not used
 #else
     .bck_io_num = I2S_BCLK_PIN,
     .ws_io_num =  I2S_WCLK_PIN,
@@ -204,8 +225,14 @@ i2s_pin_config_t pins =
 
 void setup_i2s()
 {
-    i2s_driver_install(i2s_port_number, &i2s_configuration, 0, NULL);
+    #ifdef INTERNAL_DAC  
+    i2s_driver_install(i2s_num, &i2s_config, 4, NULL); //&m_i2sQueue
+    i2s_set_dac_mode(I2S_DAC_CHANNEL_BOTH_EN);
+    #else
+    i2s_driver_install(i2s_num, &i2s_config, 0, NULL);
+    #endif
+    Serial.printf(">%02 %02 %02\n", pins.bck_io_num,pins.ws_io_num,pins.data_out_num);
     i2s_set_pin(I2S_NUM_0, &pins);
-    i2s_set_sample_rates(i2s_port_number, SAMPLE_RATE);
-    i2s_start(i2s_port_number);
+    i2s_set_sample_rates(i2s_num, SAMPLE_RATE);
+    i2s_start(i2s_num);
 }

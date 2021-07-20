@@ -13,14 +13,17 @@
  * Please check out USB-MIDI dump utility from Yuuichi Akagawa
  */
 
-#ifdef MIDI_VIA_USB_ENABLED
+ /* Michael Nolan - notes - mi - providing 5v vbus power the communications from my Novation mini launch v2 was unstable. I dropped voltage to 4.35
+  *  I don't know exactly what voltage is returning from it but it would get stuck.
+  */
+
 /*
  * Connections:
- *  CS: IO5
+ *  CS: IO5       - MAX3421   pin 1 to D5
  *  INT: IO17 (not used)
- *  SCK: IO18
- *  MISO: IO19
- *  MOSI: IO23
+ *  SCK: IO18                 pin 4 to D18
+ *  MISO: IO19                pin 3 to D19
+ *  MOSI: IO23                pin 2 to D23
  */
 
 #include <usbh_midi.h>
@@ -28,6 +31,7 @@
 #include <SPI.h>
 
 USB Usb;
+USBHub Hub(&Usb);
 USBH_MIDI  Midi(&Usb);
 
 static void UsbMidi_Poll();
@@ -43,7 +47,7 @@ struct usbMidiMappingEntry_s
 
     uint8_t cableMask;
 };
-
+//   original - but doesn't seem to do anything
 struct usbMidiMapping_s
 {
     void (*usbMidiRxIndication)(uint8_t cable);
@@ -53,21 +57,53 @@ struct usbMidiMapping_s
     int usbMidiMappingEntriesCount;
 };
 
+/*
+struct usbMidiMapping_s
+{
+    void (*noteOn)(uint8_t ch, uint8_t note, float vel);
+    void (*noteOff)(uint8_t ch, uint8_t note);
+    void (*pitchBend)(uint8_t ch, float bend);
+    void (*modWheel)(uint8_t ch, float value);
+
+    struct midiControllerMapping *controlMapping;
+    int mapSize;
+};
+*/
+
+
 extern struct usbMidiMapping_s usbMidiMapping; /* definition in z_config.ino */
 
 void UsbMidi_Setup()
 {
     vid = pid = 0;
-    Serial.begin(115200);
-    Serial.println("Hello now we can start\n");
+    //Serial.begin(115200);
+    Serial.println("Hello USBMidi now we can start\n");
 
     if (Usb.Init() == -1)
     {
         Serial.println("Usb init failed!\n");
         while (1); //halt
     }//if (Usb.Init() == -1...
+    //Midi.attachOnInit(onInit);
     delay(200);
     Serial.println("Usb init done!\n");
+}
+
+void UsbMidi_Retry()
+{
+    uint8_t  addressUSB;
+    
+    
+    //addressUSB = Usb.GetAddress();
+    Serial.println("Retry USBMidi \n"+String(addressUSB)); 
+    //Usb.release();
+    if (Usb.Init() == -1)
+    {
+        Serial.println("Usb init failed!\n");
+        //while (1); //halt
+    }//if (Usb.Init() == -1...
+    delay(200);
+    Serial.println("Usb retry done!\n");
 }
 
 uint8_t lastState = 0xFF;
@@ -80,6 +116,7 @@ void UsbMidi_Loop()
     {
         lastState = Usb.getUsbTaskState();
         Serial.printf("state: %d\n",  Usb.getUsbTaskState());
+        USBConnected = LOW;
         switch (Usb.getUsbTaskState())
         {
         case USB_STATE_DETACHED:
@@ -120,6 +157,8 @@ void UsbMidi_Loop()
 
         case USB_ATTACHED_SUBSTATE_WAIT_RESET:
             Serial.printf("    USB_ATTACHED_SUBSTATE_WAIT_RESET\n");
+            delay(100);
+            
             break;
 
         case USB_ATTACHED_SUBSTATE_GET_DEVICE_DESCRIPTOR_SIZE:
@@ -136,13 +175,15 @@ void UsbMidi_Loop()
 
         case USB_STATE_ERROR:
             Serial.printf("    USB_STATE_ERROR\n");
+            delay(1000);
+           
             break;
 
         }
-    }
+    } else USBConnected = HIGH;
     if (Midi)
     {
-        UsbMidi_Poll();
+       UsbMidi_Poll();
     }
 }
 
@@ -160,13 +201,13 @@ void UsbMidi_HandleSysEx(uint8_t *buf, uint8_t len)
 inline
 void UsbMidi_HandleLiveMsg(uint8_t msg)
 {
-    //Serial.printf("live msg\n");
+    Serial.printf("live msg\n");
 }
 
 inline
 void UsbMidi_HandleShortMsg(uint8_t *data)
 {
-    Serial.printf("short: %02x %02x %02x\n", data[0], data[1], data[2]);
+    Serial.printf("shortUSB: %02x %02x %02x\n", data[0], data[1], data[2]);
 
     /* forward data to mapped function */
     for (int i = 0; i < usbMidiMapping.usbMidiMappingEntriesCount; i++)
@@ -176,6 +217,38 @@ void UsbMidi_HandleShortMsg(uint8_t *data)
             usbMidiMapping.usbMidiMappingEntries[i].shortMsg(data);
         }
     }
+//---- taken from other MidiShortMessage
+   uint8_t ch = data[0] & 0x0F;
+
+    switch (data[0] & 0xF0)
+    {
+    /* note on */
+    case 0x90:
+        if (data[2] > 0)
+        {
+            Midi_NoteOn(ch, data[1], data[2]);
+        }
+        else
+        {
+            Midi_NoteOff(ch, data[1]);
+        }
+        break;
+    /* note off */
+    case 0x80:
+        Midi_NoteOff(ch, data[1]);
+        break;
+    case 0xb0:
+        Midi_ControlChange(ch, data[1], data[2]);
+        break;
+    /* pitchbend */
+    case 0xe0:
+        Midi_PitchBend(ch, ((((uint16_t)data[1]) ) + ((uint16_t)data[2] << 8)));
+        break;
+    }
+
+//---- end copied code fragment from midi_interface that does actual stuff
+
+    
 }
 
 uint8_t MIDI_handleMsg(uint8_t *data, uint16_t len, uint8_t cable)
@@ -250,7 +323,7 @@ static void UsbMidi_Poll()
     uint16_t  rcvd;
 
     memset(bufMidi, 0xCC, sizeof(bufMidi));
-
+    
     if (Midi.idVendor() != vid || Midi.idProduct() != pid)
     {
         vid = Midi.idVendor();
@@ -293,5 +366,3 @@ void UsbMidi_SendControlChange(uint8_t channel, uint8_t data1, uint8_t data2)
     uint8_t shortBuf[3] = {(uint8_t)(0xB0U + (channel & 0x0FU)), data1, data2};
     Serial2.write(shortBuf, 3);
 }
-
-#endif /* MIDI_VIA_USB_ENABLED */
