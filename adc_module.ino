@@ -26,6 +26,7 @@ struct adc_to_midi_s
     uint8_t ch;
     uint8_t cc;
 };
+
 int  analogueParamSet = 0;
 int  waveformParamSet = 0;
 static float adcSingle,adcSingleAve; // added by Michael for use when you don't have analogue multiplexer

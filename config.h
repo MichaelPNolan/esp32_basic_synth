@@ -14,6 +14,7 @@
 
 //#define ESP32_AUDIO_KIT
 //#define INTERNAL_DAC 
+#define DISPLAY_1306
 //defaults to some kind of external DAC probably of the PCM5102A Breakout board variety
 
 #define MIDI_VIA_USB_ENABLED
