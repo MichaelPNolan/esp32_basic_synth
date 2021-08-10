@@ -111,7 +111,7 @@ void Core0TaskLoop()
   #ifdef ADC_TO_MIDI_ENABLED
     AdcMul_Process();
   #endif
-    AdcSimple();
+    //AdcSimple();
     processButtons();
   #ifdef DISPLAY_1306
     displayRefresh();
