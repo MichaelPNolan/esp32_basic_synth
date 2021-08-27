@@ -55,8 +55,11 @@ static const unsigned char PROGMEM logo_bmp[] =
   0b01110000, 0b01110000,
   0b00000000, 0b00110000 };
 
-boolean   wantsDisplayRefresh;
-String    zoneStrings[4];
+bool   wantsDisplayRefresh;  
+//these are all arrays of 8 for the 4 rows and 2 columns that fit with text size 1 as set in init
+String    zoneStrings[8]; //Room for 8 char (maybe more) per zone (sector)
+uint8_t   zoneColor[8]; //monochrome WHITE or BLACK
+uint8_t   zoneBarSize[8] = {24,0,0,0,0,0,0,0};  //could be a rectangle of 64 pix width 8 pix height
 
 void setup1306() {
   bool setupDisplayOK = display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
@@ -75,7 +78,7 @@ void setup1306() {
   display.setTextSize(1);
   display.setTextColor(WHITE);
   wantsDisplayRefresh = LOW;
-  
+  miniScreenString(7,1,"Love Supichaya",HIGH);
   }
   /*
   // Clear the buffer
@@ -128,43 +131,89 @@ void setup1306() {
   testanimate(logo_bmp, LOGO_WIDTH, LOGO_HEIGHT); // Animate bitmaps
   */
 }
-
+void miniScreenString(uint8_t sector, uint8_t c, String s,bool refresh){
+  zoneStrings[sector] = s;
+  zoneColor[sector] = c;
+  if(refresh) miniScreenRedraw();
+}
 //prepares message but doesn't trigger display.display() because that messes with processing samples
 //for zones on text size one they are 8 high (32 pix screen height) right half starts at 64
-void miniScreenString(int sector, String s,bool refresh){
-  if(refresh) display.clearDisplay();
-  switch(sector){
-      case 0:
-        
-        zoneStrings[0] = s;
-        break;
-      
-  }
-  for(int i = 0; i<4; i++){
+void miniScreenRedraw(){
+  display.clearDisplay();
+
+  for(int i = 0; i<8; i++){
      if(zoneStrings[i].length() > 0)
      switch(i){
         case 0:
           display.setCursor(0,0);
-          display.println(zoneStrings[0]);
+          //display.println(zoneStrings[0]);
           break;
         case 1:
           display.setCursor(64,0);
-          display.println(zoneStrings[1]);
+          //display.println(zoneStrings[1]);
           break;  
         case 2:
           display.setCursor(0,8);
-          display.println(zoneStrings[2]);
+          //display.println(zoneStrings[2]);
           break;  
         case 3:
           display.setCursor(64,8);
-          display.println(zoneStrings[3]);
+          //display.println(zoneStrings[3]);
           break;  
-
+        case 4:
+          display.setCursor(0,16);
+          //display.println(zoneStrings[4]);
+          break; 
+        case 5:
+          display.setCursor(64,16);
+          //display.println(zoneStrings[5]);
+          break; 
+        case 6:
+          display.setCursor(0,24);
+          //display.println(zoneStrings[6]);
+          break; 
+        case 7:
+          display.setCursor(36,24);
+          
+          break;  
      }
+     if(zoneColor[i])
+        display.setTextColor(WHITE,BLACK);
+     else
+        display.setTextColor(BLACK,WHITE);
+     
+     if(zoneBarSize[i] > 0){
+        miniScreenBarDraw(i);
+     } else
+     display.println(zoneStrings[i]);
   }
   wantsDisplayRefresh = HIGH;
   //  display.display(); is called by displayRefresh on core0task loop but this loading the display memory can be called any time
 }
+void miniScreenBarSize(uint8_t sector, float param){
+  
+  zoneBarSize[sector] = 64.0f * param;
+  miniScreenRedraw();
+}
+
+void miniScreenBarDraw(uint8_t sector){
+   int x,y;
+   if(sector>0) y = (sector / 2) * 8; else y = 0;
+   x = (sector % 2) *64;
+   display.drawRect(x,y, zoneBarSize[sector], 7, SSD1306_WHITE);
+   display.setCursor(x,y);
+    
+   display.setTextColor(BLACK,WHITE);
+   uint8_t fitInBar = zoneBarSize[sector]/7; //numb of characters to fit in bar
+   display.print(zoneStrings[sector].substring(0,fitInBar)); //reprint the text  myString.substring(from, to)
+   display.setTextColor(WHITE,BLACK);
+   display.print(zoneStrings[sector].substring(fitInBar)); 
+    
+ 
+  //  display.display(); is called by displayRefresh on core0task loop but this loading the display memory can be called any time
+}
+
+
 
 void displayRefresh()
 {
@@ -174,6 +223,7 @@ void displayRefresh()
   
   }
 }
+
 
 
 
@@ -467,36 +517,3 @@ void testanimate(const uint8_t *bitmap, uint8_t w, uint8_t h) {
   }
 }
 #endif
-/*
-void scan() {
-  byte error, address;
-  int nDevices;
-  Serial.println("Scanning...");
-  nDevices = 0;
-  for(address = 1; address < 127; address++ ) {
-    Wire.beginTransmission(address);
-    error = Wire.endTransmission();
-    if (error == 0) {
-      Serial.print("I2C device found at address 0x");
-      if (address<16) {
-        Serial.print("0");
-      }
-      Serial.println(address,HEX);
-      nDevices++;
-    }
-    else if (error==4) {
-      Serial.print("Unknow error at address 0x");
-      if (address<16) {
-        Serial.print("0");
-      }
-      Serial.println(address,HEX);
-    }    
-  }
-  if (nDevices == 0) {
-    Serial.println("No I2C devices found\n");
-  }
-  else {
-    Serial.println("done\n");
-  }
-  delay(5000);          
-} */

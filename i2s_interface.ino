@@ -191,15 +191,7 @@ i2s_config_t i2s_config =
 };
 
 
-#ifdef I2S_NODAC
-i2s_pin_config_t pins =
-{
-    .bck_io_num = I2S_PIN_NO_CHANGE,
-    .ws_io_num =  I2S_PIN_NO_CHANGE,
-    .data_out_num = I2S_NODAC_OUT_PIN,
-    .data_in_num = I2S_PIN_NO_CHANGE
-};
-#else
+
 i2s_pin_config_t pins =
 {
 #ifdef ESP32_AUDIO_KIT
@@ -207,12 +199,6 @@ i2s_pin_config_t pins =
     .ws_io_num =  IIS_LCLK,
     .data_out_num = IIS_DSIN,
     .data_in_num = IIS_DSOUT
-#endif
-#ifdef INTERNAL_DAC  
-    .bck_io_num = 26, //this is BCK pin
-    .ws_io_num = 25, // this is LRCK pin aka word clock
-    .data_out_num = 22, // this is DATA output pin
-    .data_in_num = I2S_PIN_NO_CHANGE   //Not used
 #else
     .bck_io_num = I2S_BCLK_PIN,
     .ws_io_num =  I2S_WCLK_PIN,
@@ -220,7 +206,7 @@ i2s_pin_config_t pins =
     .data_in_num = I2S_PIN_NO_CHANGE
 #endif
 };
-#endif
+
 
 
 void setup_i2s()
@@ -231,7 +217,8 @@ void setup_i2s()
     #else
     i2s_driver_install(i2s_num, &i2s_config, 0, NULL);
     #endif
-    Serial.printf(">%02 %02 %02\n", pins.bck_io_num,pins.ws_io_num,pins.data_out_num);
+    //Serial.printf(">%02 %02 %02\n", pins.bck_io_num,pins.ws_io_num,pins.data_out_num);
+    Serial.println("pin info"+String(pins.bck_io_num)+" "+String(pins.ws_io_num)+" "+String(pins.data_out_num));
     i2s_set_pin(I2S_NUM_0, &pins);
     i2s_set_sample_rates(i2s_num, SAMPLE_RATE);
     i2s_start(i2s_num);
