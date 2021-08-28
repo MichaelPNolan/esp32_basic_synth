@@ -18,7 +18,7 @@
 #endif
 
 /* use define to dump midi data */
-//#define DUMP_SERIAL2_TO_SERIAL
+#define DUMP_SERIAL2_TO_SERIAL
 
 /*
  * structure is used to build the mapping table

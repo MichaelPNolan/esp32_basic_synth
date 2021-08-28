@@ -25,9 +25,69 @@ struct adc_to_midi_s adcToMidiLookUp[ADC_TO_MIDI_LOOKUP_SIZE] =
 };
 
 /*
- * this mapping is used for the edirol pcr-800
- * this should be changed when using another controller
+ * This is a new mapping for the Worlde Tuna midi controller
+ * however it doesn't send value fader sizes like I did with my midi
+ * it sends different messages from rotary type faders when they turn in an up or down direction/rotation
+ * Eg the first knob sends B0 48 40 followed by B0 48 3F for left rotation and B0 48 40 and B0 48 41 for right turn - repeats as you turn "clicks" 
+ * Noted as 30 48 (continuous controller)
+ * struct midiControllerMapping
+{
+    uint8_t channel;
+    uint8_t data1;
+    const char *desc;
+    void(*callback_mid)(uint8_t ch, uint8_t data1, uint8_t data2);
+    void(*callback_val)(uint8_t userdata, float value);
+    uint8_t user_data;
+};
+#define SYNTH_PARAM_DETUNE_1    8
+#define SYNTH_PARAM_UNISON_2    9
+#else
+#define SYNTH_PARAM_WAVEFORM_1    8
+#define SYNTH_PARAM_WAVEFORM_2    9
+#endif
+#define SYNTH_PARAM_MAIN_FILT_CUTOFF  10
+#define SYNTH_PARAM_MAIN_FILT_RESO    11
+#define SYNTH_PARAM_VOICE_FILT_RESO   12
+#define SYNTH_PARAM_VOICE_NOISE_LEVEL 13
  */
+
+struct midiControllerMapping tunaWorlde[] =
+{
+  #ifdef USE_UNISON
+    { 0x0, 0x0a, "R1", NULL, Synth_SetParam, SYNTH_PARAM_DETUNE_1},
+    { 0x0, 0x0b, "R2", NULL, Synth_SetParam, SYNTH_PARAM_UNISON_2},
+#else
+    { 0x0, 0x0a, "R1", NULL, Synth_SetParam, SYNTH_PARAM_VEL_ENV_ATTACK},  //0x0 - 0x7, 0x10 little tiger toy midi controller  Synth_SetParam, SYNTH_PARAM_WAVEFORM_1
+    { 0x0, 0x0b, "R2", NULL, Synth_SetParam, SYNTH_PARAM_VEL_ENV_DECAY},  //Synth_SetParam, SYNTH_PARAM_WAVEFORM_2
+#endif
+    { 0x0, 0x0c, "R3", NULL, Synth_SetParam, SYNTH_PARAM_VEL_ENV_SUSTAIN},                      //Delay_SetLength, 2
+    { 0x0, 0x0d, "R4", NULL, Synth_SetParam, SYNTH_PARAM_VEL_ENV_RELEASE},                       //Delay_SetLevel, 3    //Delay_SetFeedback, 4
+
+    { 0x0, 0x0e, "R5", NULL, Synth_SetParam, SYNTH_PARAM_FIL_ENV_ATTACK},
+    { 0x0, 0x0f, "R6", NULL, Synth_SetParam, SYNTH_PARAM_FIL_ENV_DECAY},
+    { 0x0, 0x10, "R7", NULL, Synth_SetParam, SYNTH_PARAM_FIL_ENV_SUSTAIN},
+    { 0x0, 0x11, "R8", NULL, Synth_SetParam, SYNTH_PARAM_FIL_ENV_RELEASE},
+
+    { 0x0, 0x14, "R9", NULL, Delay_SetLength, 2},          //Delay_SetLevel, 3    //Delay_SetFeedback, 4
+    { 0x0, 0x15, "R10", NULL, Delay_SetLevel, 3},
+    { 0x0, 0x16, "R11", NULL, Delay_SetFeedback, 4},
+
+    { 0x0, 0x17, "R12", NULL, Synth_SetParam, SYNTH_PARAM_MAIN_FILT_CUTOFF},
+    { 0x0, 0x18, "R13", NULL, Synth_SetParam, SYNTH_PARAM_MAIN_FILT_RESO},
+    { 0x0, 0x19, "R14", NULL, Synth_SetParam, SYNTH_PARAM_FIL_ENV_SUSTAIN},
+    { 0x0, 0x1a, "R15", NULL, Synth_SetParam, SYNTH_PARAM_WAVEFORM_1 },
+    { 0x0, 0x1b, "R15", NULL, Synth_SetParam, SYNTH_PARAM_WAVEFORM_2},
+
+    // Central slider */
+    { 0x0, 0x13, "H1", NULL, NULL, 0},
+};
+/*
+ * this mapping  originally used for the edirol pcr-800 - renamed to tiger when
+ * I started to do mappings for my homebrew midicontroller
+ * 
+  */
+  
+
 struct midiControllerMapping tigerMapping[] =
 {
     /*// transport buttons 
@@ -107,8 +167,8 @@ struct midiMapping_s midiMapping =
     Synth_NoteOff,
     Synth_PitchBend,
     Synth_ModulationWheel,
-    tigerMapping,
-    sizeof(tigerMapping) / sizeof(tigerMapping[0]),
+    tunaWorlde,
+    sizeof(tunaWorlde) / sizeof(tunaWorlde[0]),
 };
 
 

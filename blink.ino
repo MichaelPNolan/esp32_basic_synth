@@ -3,11 +3,11 @@
  *
  * Author: Marcel Licence
  */
-#define ONBOARD_LED 0
+
 inline
 void Blink_Setup(void)
 {
-    pinMode(ONBOARD_LED, OUTPUT);
+    pinMode(LED_PIN, OUTPUT);
 }
 
 
@@ -17,15 +17,11 @@ void Blink_Process(void)
     static bool ledOn = true;
     if (ledOn)
     {
-        digitalWrite(ONBOARD_LED, HIGH);   // turn the LED on (HIGH is the voltage level)
-      //  miniScreenString(4,"--Flash---",HIGH);
-
+        digitalWrite(LED_PIN, HIGH);   // turn the LED on (HIGH is the voltage level)
     }
     else
     {
-        digitalWrite(ONBOARD_LED, LOW);    // turn the LED off
-       // miniScreenString(4,"----------",HIGH);
-
+        digitalWrite(LED_PIN, LOW);    // turn the LED off
     }
     ledOn = !ledOn;
 }
