@@ -766,19 +766,40 @@ void Synth_SetParam(uint8_t slider, float value)
     {
     case SYNTH_PARAM_VEL_ENV_ATTACK:
         adsr_vol.a = (0.00005 * pow(5000, 1.0f - value));
+        #ifdef DISPLAY_1306
+        miniScreenString(0,1,"VoiAttck",HIGH);
+        miniScreenBarSize(0, value);
+        miniScreenString(14,1,String(adsr_vol.a),HIGH);
+        #else
         Serial.printf("voice volume attack: %0.6f\n", adsr_vol.a);
+        #endif
         break;
     case SYNTH_PARAM_VEL_ENV_DECAY:
         adsr_vol.d = (0.00005 * pow(5000, 1.0f - value));
+        #ifdef DISPLAY_1306
+        miniScreenString(1,1,"VoiDecay",HIGH);
+        miniScreenBarSize(1, value);
+        #else
         Serial.printf("voice volume decay: %0.6f\n", adsr_vol.d);
+        #endif
         break;
     case SYNTH_PARAM_VEL_ENV_SUSTAIN:
         adsr_vol.s = (0.01 * pow(100, value));
+        #ifdef DISPLAY_1306
+        miniScreenString(2,1,"VoiceSus",HIGH);
+        miniScreenBarSize(2, value);
+        #else
         Serial.printf("voice volume sustain: %0.6f\n", adsr_vol.s);
+        #endif
         break;
     case SYNTH_PARAM_VEL_ENV_RELEASE:
         adsr_vol.r = (0.0001 * pow(100, 1.0f - value));
+        #ifdef DISPLAY_1306
+        miniScreenString(3,1,"VoiRleas",HIGH);
+        miniScreenBarSize(3, value);
+        #else
         Serial.printf("voice volume release: %0.6f\n", adsr_vol.r);
+        #endif
         break;
 
     case SYNTH_PARAM_FIL_ENV_ATTACK:
@@ -787,19 +808,39 @@ void Synth_SetParam(uint8_t slider, float value)
 #else
         adsr_fil.a = value;
 #endif
+        #ifdef DISPLAY_1306
+        miniScreenString(4,1,"FiltEnv_A",HIGH);
+        miniScreenBarSize(4, value);
+        #else
         Serial.printf("voice filter attack: %0.6f\n", adsr_fil.a);
+        #endif
         break;
     case SYNTH_PARAM_FIL_ENV_DECAY:
         adsr_fil.d = (0.00005 * pow(5000, 1.0f - value));
+        #ifdef DISPLAY_1306
+        miniScreenString(5,1,"FiltEnv_D",HIGH);
+        miniScreenBarSize(5, value);
+        #else
         Serial.printf("voice filter decay: %0.6f\n", adsr_fil.d);
+        #endif
         break;
     case SYNTH_PARAM_FIL_ENV_SUSTAIN:
         adsr_fil.s = value;
+        #ifdef DISPLAY_1306
+        miniScreenString(6,1,"FiltEnv_S",HIGH);
+        miniScreenBarSize(6, value);
+        #else
         Serial.printf("voice filter sustain: %0.6f\n", adsr_fil.s);
+        #endif
         break;
     case SYNTH_PARAM_FIL_ENV_RELEASE:
         adsr_fil.r = (0.0001 * pow(100, 1.0f - value));
+        #ifdef DISPLAY_1306
+        miniScreenString(7,1,"FiltEnv_R",HIGH);
+        miniScreenBarSize(7, value);
+        #else
         Serial.printf("voice filter release: %0.6f\n", adsr_fil.r);
+        #endif
         break;
 
 #ifdef USE_UNISON

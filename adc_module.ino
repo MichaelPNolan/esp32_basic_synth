@@ -13,7 +13,10 @@
 /* Notes by Michael - hack version of this 
  * Requires Boardmanager 1.0.4 or earlier of ESP32
  * doing math
+ * Integrate display calls and how we pick up changes in parameters ... potentiall relocate things out of adc_module from esp32_alone_synth and build up the display-1306 with calls 
+ * that can be developed in the code where parameters are changed and we want to reflect that on the screen.
 */
+
 
 #define upButton 12 // for use with a single POT to select which parameter
 #define downButton 4 // ditto

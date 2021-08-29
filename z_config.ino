@@ -74,7 +74,7 @@ struct midiControllerMapping tunaWorlde[] =
 
     { 0x0, 0x17, "R12", NULL, Synth_SetParam, SYNTH_PARAM_MAIN_FILT_CUTOFF},
     { 0x0, 0x18, "R13", NULL, Synth_SetParam, SYNTH_PARAM_MAIN_FILT_RESO},
-    { 0x0, 0x19, "R14", NULL, Synth_SetParam, SYNTH_PARAM_FIL_ENV_SUSTAIN},
+    { 0x0, 0x19, "R14", NULL, Synth_SetParam, SYNTH_PARAM_VOICE_FILT_RESO},
     { 0x0, 0x1a, "R15", NULL, Synth_SetParam, SYNTH_PARAM_WAVEFORM_1 },
     { 0x0, 0x1b, "R15", NULL, Synth_SetParam, SYNTH_PARAM_WAVEFORM_2},
 
