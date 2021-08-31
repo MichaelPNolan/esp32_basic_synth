@@ -26,8 +26,10 @@
 #include <Adafruit_SSD1306.h>
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 32 // OLED display height, in pixels
-
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+#define ROWS         8   // 8 pix high gives 8 * 8 for SCREEN of 64 high which is the 0.96" variation used for basic_synthv4
+#define COLUMNS      2 
+#define ZONES        16  //simply ROWS by COLUMNS 
 
 #define OLED_RESET      -1// Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
@@ -36,7 +38,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define LOGO_HEIGHT   16
 #define LOGO_WIDTH    16
 #define NUMFLAKES     10 // Number of snowflakes in the animation example
-//--------_USE this definition in config.h to turn this module on/off
+/*--------_USE this definition in config.h to turn this module on/off
 static const unsigned char PROGMEM logo_bmp[] =
 { 0b00000000, 0b11000000,
   0b00000001, 0b11000000,
@@ -54,9 +56,12 @@ static const unsigned char PROGMEM logo_bmp[] =
   0b01111100, 0b11110000,
   0b01110000, 0b01110000,
   0b00000000, 0b00110000 };
-
-boolean   wantsDisplayRefresh;
-String    zoneStrings[4];
+*/
+bool   wantsDisplayRefresh;  
+//these are all arrays of 8 for the 4 rows and 2 columns that fit with text size 1 as set in init
+String    zoneStrings[ZONES]; //Room for 8 char (maybe more) per zone (zone)
+uint8_t   zoneColor[ZONES]; //monochrome WHITE or BLACK
+uint8_t   zoneBarSize[ZONES] = {24,30,32,40,44,48,52,60,64,64,64,64,64,0,0};  //could be a rectangle of 64 pix width 8 pix height
 
 void setup1306() {
   bool setupDisplayOK = display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
@@ -75,96 +80,89 @@ void setup1306() {
   display.setTextSize(1);
   display.setTextColor(WHITE);
   wantsDisplayRefresh = LOW;
-  
+  miniScreenString(14,1,"Love Supi",HIGH);
   }
-  /*
-  // Clear the buffer
-  display.clearDisplay();
 
-  // Draw a single pixel in white
-  display.drawPixel(10, 10, SSD1306_WHITE);
-
-  // Show the display buffer on the screen. You MUST call display() after
-  // drawing commands to make them visible on screen!
-  display.display();
-  delay(2000);
-  // display.display() is NOT necessary after every single drawing command,
-  // unless that's what you want...rather, you can batch up a bunch of
-  // drawing operations and then update the screen all at once by calling
-  // display.display(). These examples demonstrate both approaches...
-
-  testdrawline();      // Draw many lines
-
-  testdrawrect();      // Draw rectangles (outlines)
-
-  testfillrect();      // Draw rectangles (filled)
-
-  testdrawcircle();    // Draw circles (outlines)
-
-  testfillcircle();    // Draw circles (filled)
-
-  testdrawroundrect(); // Draw rounded rectangles (outlines)
-
-  testfillroundrect(); // Draw rounded rectangles (filled)
-
-  testdrawtriangle();  // Draw triangles (outlines)
-
-  testfilltriangle();  // Draw triangles (filled)
-
-  testdrawchar();      // Draw characters of the default font
-
-  testdrawstyles();    // Draw 'stylized' characters
-
-  testscrolltext();    // Draw scrolling text
-
-  testdrawbitmap();    // Draw a small bitmap image
-  
-  // Invert and restore display, pausing in-between
-  display.invertDisplay(true);
-  delay(1000);
-  display.invertDisplay(false);
-  delay(1000);
-  
-  testanimate(logo_bmp, LOGO_WIDTH, LOGO_HEIGHT); // Animate bitmaps
-  */
 }
+void miniScreenString(uint8_t zone, uint8_t c, String s,bool refresh){
+  if(zone > ZONES) return;  //don't try to write or do anything if this is in error
+  zoneStrings[zone] = s;
+  zoneColor[zone] = c;
+  if(refresh) miniScreenRedraw(zone,0); //this should do all the zones set true for screenRefresh as second parameter
+}
+
 
 //prepares message but doesn't trigger display.display() because that messes with processing samples
 //for zones on text size one they are 8 high (32 pix screen height) right half starts at 64
-void miniScreenString(int sector, String s,bool refresh){
-  if(refresh) display.clearDisplay();
-  switch(sector){
-      case 0:
-        
-        zoneStrings[0] = s;
-        break;
-      
-  }
-  for(int i = 0; i<4; i++){
-     if(zoneStrings[i].length() > 0)
-     switch(i){
-        case 0:
-          display.setCursor(0,0);
-          display.println(zoneStrings[0]);
-          break;
-        case 1:
-          display.setCursor(64,0);
-          display.println(zoneStrings[1]);
-          break;  
-        case 2:
-          display.setCursor(0,8);
-          display.println(zoneStrings[2]);
-          break;  
-        case 3:
-          display.setCursor(64,8);
-          display.println(zoneStrings[3]);
-          break;  
-
+void miniScreenRedraw(uint8_t zone, bool screenRefresh){
+  uint8_t row, col;
+  if(screenRefresh) {
+  display.clearDisplay();
+    for(int i = 0; i<ZONES; i++){
+       if(zoneStrings[i].length() > 0){
+         if(i>1) row = i / 2; else row = 0;
+         col = i % 2;
+         display.setCursor(64*col,8*row);
+    
+         if(zoneColor[i])
+            display.setTextColor(WHITE,BLACK);
+         else
+            display.setTextColor(BLACK,WHITE);
+         
+         if(zoneBarSize[i] > 0){
+            miniScreenBarDraw(i);
+         } else
+         display.println(zoneStrings[i]);
+       }
+    }
+    wantsDisplayRefresh = HIGH;
+  } else {
+    if(zoneStrings[zone].length() > 0){
+       if(zone>1) row = zone / 2; else row = 0;
+       col = zone % 2;
+       display.setCursor(64*col,8*row);
+      // display.println("         "); //hopefully equivalent to clearDisplay for a single zone at this cursor
+      //  display.setCursor(64*col,8*row);
+       if(zoneColor[zone])
+          display.setTextColor(WHITE,BLACK);
+       else
+          display.setTextColor(BLACK,WHITE);
+       
+       if(zoneBarSize[zone] > 0){
+          miniScreenBarDraw(zone);
+       } else
+       display.println(zoneStrings[zone]);
      }
+     wantsDisplayRefresh = HIGH;
   }
-  wantsDisplayRefresh = HIGH;
+  
+  
   //  display.display(); is called by displayRefresh on core0task loop but this loading the display memory can be called any time
 }
+void miniScreenBarSize(uint8_t zone, float param){ //optimise to just update one zone for parameter adjusting to do less processing
+  
+  zoneBarSize[zone] = 64.0f * param;
+  miniScreenRedraw(zone, 0); // set this up to just update one zone
+}
+
+void miniScreenBarDraw(uint8_t zone){
+   int x,y;
+   if(zone>0) y = (zone / 2) * 8; else y = 0;
+   x = (zone % 2) *64;
+   display.drawRect(x,y, zoneBarSize[zone], 7, SSD1306_WHITE);
+   display.setCursor(x,y);
+    
+   display.setTextColor(BLACK,WHITE);
+   uint8_t fitInBar = zoneBarSize[zone]/7; //numb of characters to fit in bar
+   display.print(zoneStrings[zone].substring(0,fitInBar)); //reprint the text  myString.substring(from, to)
+   display.setTextColor(WHITE,BLACK);
+   display.print(zoneStrings[zone].substring(fitInBar)); 
+    
+ 
+  //  display.display(); is called by displayRefresh on core0task loop but this loading the display memory can be called any time
+}
+
+
 
 void displayRefresh()
 {
@@ -176,6 +174,7 @@ void displayRefresh()
 }
 
 
+/*
 
 void testdrawline() {
   int16_t i;
@@ -465,38 +464,5 @@ void testanimate(const uint8_t *bitmap, uint8_t w, uint8_t h) {
       }
     }
   }
-}
+}*/
 #endif
-/*
-void scan() {
-  byte error, address;
-  int nDevices;
-  Serial.println("Scanning...");
-  nDevices = 0;
-  for(address = 1; address < 127; address++ ) {
-    Wire.beginTransmission(address);
-    error = Wire.endTransmission();
-    if (error == 0) {
-      Serial.print("I2C device found at address 0x");
-      if (address<16) {
-        Serial.print("0");
-      }
-      Serial.println(address,HEX);
-      nDevices++;
-    }
-    else if (error==4) {
-      Serial.print("Unknow error at address 0x");
-      if (address<16) {
-        Serial.print("0");
-      }
-      Serial.println(address,HEX);
-    }    
-  }
-  if (nDevices == 0) {
-    Serial.println("No I2C devices found\n");
-  }
-  else {
-    Serial.println("done\n");
-  }
-  delay(5000);          
-} */
