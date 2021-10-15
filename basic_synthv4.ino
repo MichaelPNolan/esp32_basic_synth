@@ -17,7 +17,8 @@
 TaskHandle_t  Core0TaskHnd ;
 boolean       USBConnected;
 uint16_t      task0cycles;
-
+uint32_t      refreshScreen;
+static uint32_t CZLoop_cnt_1hz;
 
 //#define I2S_NODAC  not really sure what this is since it does try to play samples
 #define MIDI_VIA_USB_ENABLED
@@ -43,6 +44,7 @@ void setup()
     USBConnected = LOW;
     Blink_Setup();
     setupButtons();
+    
     
 #ifdef ESP32_AUDIO_KIT
     ac101_setup();
@@ -94,10 +96,12 @@ void Core0TaskSetup()
     /*
      * init your stuff for core0 here
      */
+    
 #ifdef ADC_TO_MIDI_ENABLED
     AdcMul_Init();
 #endif
 #ifdef DISPLAY_1306
+   refreshScreen = 1000/SCREEN_FPS; 
    setup1306(); //display
 #endif
    task0cycles = 0;
@@ -108,19 +112,25 @@ void Core0TaskLoop()
     /*
      * put your loop stuff for core0 here
      */
+  
   #ifdef ADC_TO_MIDI_ENABLED
     AdcMul_Process();
   #endif
     //AdcSimple();
     processButtons();
   #ifdef DISPLAY_1306
-    displayRefresh();
-  #endif
-    /*task0cycles++;
-    if(task0cycles > 500){
-       
-       task0cycles = 0;
-    }*/
+
+    CZLoop_cnt_1hz ++;
+
+    if (CZLoop_cnt_1hz >= refreshScreen)   //I think the timing that makes this actually make sense relates to portMAX_DELAY in the i2s_write function see i2s_interface module
+    {
+        CZLoop_cnt_1hz = 0;
+        miniScreenRedraw(0,1); //completely rewrite screen
+        displayRefresh();
+        
+    }
+      
+    #endif
 }
 
 void Core0Task(void *parameter)
@@ -196,15 +206,13 @@ void loop()
     if (loop_count_u8 % 40 == 0)
     {
        
-        //if(!USBConnected) {UsbMidi_Loop(); Serial.print(".");}
+      //if(!USBConnected) {UsbMidi_Loop(); Serial.print(".");}
         Midi_Process();
       #ifdef MIDI_VIA_USB_ENABLED
         UsbMidi_ProcessSync();
       #endif
-        UsbMidi_Loop();
-       
-
-        
+      UsbMidi_Loop();
+             
     }
    
 }

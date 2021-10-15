@@ -47,7 +47,7 @@ Add '#define I2S_NODAC' to config.h
 The default output pin is IO22. Add a capacitor in series of the audio line (10µF for example)
 
 I've butchered this code and put a simple ADC for a pot, and i've also used a multiplexer chip on a Midicontroller - so I haven't used this yet in my version here but the code is sort of in play. However, I discovered that if you initialize thie ADCmul parts of this project then ADC via pins of the ESP32 seemed to read wrong (not work) - there is also an issue with code from 1.0.4 of the ESP32 for Arduino board libraries being needed and so newer versions will have compile errors and there are analog related calls that don't exist since 1.0.5 where they just standardized to the arduino way of calling those.
-## Using an ADC multiplexer
+## Using an ADC multiplexer  - This part you may want to go back to the original this is forked from
 Connection of the ADC multiplexer:
 - EN -> Ground
 - S0 -> IO33
@@ -56,6 +56,19 @@ Connection of the ADC multiplexer:
 - S3 -> Ground
 - Sig -> IO12
 Here is the related video: https://youtu.be/l8GrNxElRkc
+##NOTES on changes to the ADC_Module
+In my project I didn't set up this chip but I did ADC direct to pins of ESP32 dev board and
+i developed different variations of filtering noise and over-sampling. However - then I pivoted to working with USB Midi controller
+and built on pots and sliders - making my own mapping for a Worlde Tuna Mini
+
+## SSD1306 OLED Display - main feature of this fork
+Primary benefit is to have feedback on notes and parameters and turn off serial communications used with the ArduinoIDE serial monitor.
+Code originally calling that is optioned out with #ifdef DISPLAY_1306 #endif using #else to call the original serial for debugging.
+This chip drivers - from what I've seen monochrome tiny displays as in old phone equipment. Its very light on power of course
+There is a 128x32 thin shallow version (that I used in my stand-alone synth) and the 128x64. I created code to write parameter name strings
+and overlay a bar that adjust as you turn the knob. 
+Later I optimized the code to make use of infrequent refresh to clean up the animation about 12 fps so you can see mention of refresh rate.
+This is merely how many times a second we clear and rewrite the screen contents. That way I can just write only the changed strings/bars and reduce processing and communication overhead when the knobs are sending a lot of control changes. When it was doing to many I would hear audible noise as the I2S got delayed putting samples to the buffer. The OLED driver is setup using Core0 (whereas the i2s and processing audio samples is on the default Core1)
 
 ### ADC Mapping
 The adc module has been only tested with the ESP32 Audio Kit V2.2.
@@ -68,7 +81,8 @@ It should be also mapped int the MIDI mapping.
 A controller mapping can be found in z_config.ino.
 You can define your own controller mapping if your controller does support CC messages.
 
-## MIDI via USB
+## MIDI via USB - This fork uses hostmidi shield
+https://www.lazada.co.th/products/mini-usb-host-shield-20-adk-slr-development-tool-i2518678308-s8940605238.html?spm=a2o4m.searchlist.list.5.3b4b2c55rk7xxJ&search=1
 MIDI can be received via USB activating the MACRO "MIDI_VIA_USB_ENABLED" in config.h.
 
 Default PIN Mapping is:
@@ -82,7 +96,7 @@ For more information refer to the MIDI related project: https://github.com/marce
 Using USB can be seen here: https://youtu.be/Mt3rT-SVZww
 
 ---
-If you have questions or ideas please feel free to use the discussion area!
+If you have questions or ideas please feel free to use the discussion area of https://github.com/marcel-licence/esp32_basic_synth of which this is a fork
 
 ---
 
