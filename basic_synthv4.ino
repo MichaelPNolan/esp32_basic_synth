@@ -13,6 +13,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
+
 /* this is used to add a task to core 0 */
 TaskHandle_t  Core0TaskHnd ;
 boolean       USBConnected;
@@ -67,9 +68,7 @@ void setup()
     // esp_wifi_deinit();
 #endif
 
-#ifdef MIDI_VIA_USB_ENABLED
-    UsbMidi_Setup();
-#endif
+
 
 
 
@@ -78,16 +77,25 @@ void setup()
     Serial.printf("ESP.getHeapSize() %d\n", ESP.getHeapSize());
     Serial.printf("ESP.getMaxAllocHeap() %d\n", ESP.getMaxAllocHeap());
 
-    Serial.printf("Firmware started successfully\n");
+    #if (defined DISPLAY_1306) && ( DISPLAY_CORE == 1)
+       refreshScreen = SAMPLE_RATE/SCREEN_FPS; // 1000/SCREEN_FPS if on core0 loop SAMPLE_RATE/SCREEN_FPS in core1 loop
+       setup1306(); //display
+       setupDisplayMessageQueue(); //should be initialized (called) from the other core so you can run setup1306() on core0 and other things leave data in the message queue
+    #endif
 
 #if 0 /* activate this line to get a tone on startup to test the DAC */
     Synth_NoteOn(0, 64, 1.0f);
 #endif
-
+#ifdef MIDI_VIA_USB_ENABLED
+    UsbMidi_Setup();
+#endif
 #if (defined ADC_TO_MIDI_ENABLED) || (defined MIDI_VIA_USB_ENABLED)
-    xTaskCreatePinnedToCore(Core0Task, "Core0Task", 8000, NULL, 999, &Core0TaskHnd, 0);
+    xTaskCreatePinnedToCore(Core0Task, "Core0Task", 20000, NULL, 999, &Core0TaskHnd, 0);  //orig xTaskCreatePinnedToCore(Core0Task, "Core0Task", 8000, NULL, 999, &Core0TaskHnd, 0);
     Serial.println("Setup Pin To Core 0 loop");
 #endif
+
+    Serial.printf("Firmware started successfully\n");
+
 }
 
 
@@ -96,15 +104,17 @@ void Core0TaskSetup()
     /*
      * init your stuff for core0 here
      */
-    
+
 #ifdef ADC_TO_MIDI_ENABLED
     AdcMul_Init();
 #endif
-#ifdef DISPLAY_1306
-   refreshScreen = 1000/SCREEN_FPS; 
+#if (defined DISPLAY_1306) && ( DISPLAY_CORE == 0)
+   
+   refreshScreen = 1000/SCREEN_FPS; // 1000/SCREEN_FPS if on core0 loop SAMPLE_RATE/SCREEN_FPS in core1 loop
    setup1306(); //display
+   setupDisplayMessageQueue(); //should be initialized (called) from the other core so you can run setup1306() on core0 and other things leave data in the message queue
 #endif
-   task0cycles = 0;
+ //  task0cycles = 0; //seems defunct
 }
 
 void Core0TaskLoop()
@@ -118,18 +128,18 @@ void Core0TaskLoop()
   #endif
     //AdcSimple();
     processButtons();
-  #ifdef DISPLAY_1306
+    
 
+
+   #if (defined DISPLAY_1306) && (DISPLAY_CORE == 0)
     CZLoop_cnt_1hz ++;
-
     if (CZLoop_cnt_1hz >= refreshScreen)   //I think the timing that makes this actually make sense relates to portMAX_DELAY in the i2s_write function see i2s_interface module
     {
-        CZLoop_cnt_1hz = 0;
-        miniScreenRedraw(0,1); //completely rewrite screen
-        displayRefresh();
-        
-    }
+      CZLoop_cnt_1hz = 0;
+      //miniScreenRedraw(0,1); //completely rewrite screen
+      displayRefresh();
       
+    }  
     #endif
 }
 
@@ -180,6 +190,19 @@ void loop()
         loop_cnt_1hz = 0;
     }
 
+   #if (defined DISPLAY_1306) && (DISPLAY_CORE == 1)
+    CZLoop_cnt_1hz ++;
+    if (CZLoop_cnt_1hz >= refreshScreen)   //I think the timing that makes this actually make sense relates to portMAX_DELAY in the i2s_write function see i2s_interface module
+    {
+      CZLoop_cnt_1hz = 0;
+      //miniScreenRedraw(0,1); //completely rewrite screen
+      displayRefresh();
+      
+    }  
+    #endif
+
+    
+   
 #ifdef I2S_NODAC
     if (writeDAC(l_sample))
     {
@@ -203,11 +226,11 @@ void loop()
      * Midi does not required to be checked after every processed sample
      * - we divide our operation by 8
      */
-    if (loop_count_u8 % 40 == 0)
+    if (loop_count_u8 % 35 == 0)
     {
        
-      //if(!USBConnected) {UsbMidi_Loop(); Serial.print(".");}
-        Midi_Process();
+     
+      Midi_Process();
       #ifdef MIDI_VIA_USB_ENABLED
         UsbMidi_ProcessSync();
       #endif

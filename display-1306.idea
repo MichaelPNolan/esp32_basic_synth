@@ -1,23 +1,21 @@
 /**************************************************************************
- This is an example for our Monochrome OLEDs based on SSD1306 drivers
+ This was built out from example code for Adafruit's Monochrome OLEDs based on SSD1306 drivers
 
- Pick one up today in the adafruit shop!
- ------> http://www.adafruit.com/category/63_98
-
- This example is for a 128x32 pixel display using I2C to communicate
- 3 pins are required to interface (two I2C and one reset).
-
- Adafruit invests time and resources providing this open
- source code, please support Adafruit and open-source
- hardware by purchasing products from Adafruit!
-
- Written by Limor Fried/Ladyada for Adafruit Industries,
- with contributions from the open source community.
- BSD license, check license.txt for more information
- All text above, and the splash screen below must be
- included in any redistribution.
- **************************************************************************/
-
+ *  Oct 12-15
+ * Bug issue with using the display on one version of ESP32 - somehow different from another that I thought was the same, the way the core0 calls access the 
+ * 1306 display library causes corruption. For example in easySynth, if you have the #ifdef DISPLAY_1306 you write to the screen using
+ *      miniScreenString(3,1,"VoiRleas",HIGH);
+ *      miniScreenBarSize(3, value);
+ *    To this module "display-1306" that I've put togther
+ *  So today Oct 15 I'm going to make some kind of indirect way of calling these commands without directly causing display (the instance of Adadfruit_1306)
+ *  to be called while Core1 is being used. Its possible on one of my test ESP32 core 0 is running audio and display ... idk
+ *  
+ *  Oct 17 - After study a bit and ideas I decided to try volatile variables but that didn't seem good for String type if possible
+ *  so then I started to change to use old char* type (null terminated) and old libraries hoping this kind of direct RAM allocation will be 
+ *  better for multi-core ops. Also not ineffeciently wrting field names more often than needed especially when I dynamically allocate mem with new char to the string
+ *  i don't know if I have to dealloc or if its auto in C++
+ *  Got some signs that this can write to screen uncorrupted
+ */
 
 #ifdef DISPLAY_1306
 #include <SPI.h>
@@ -31,7 +29,7 @@
 #define ROWS         8   // 8 pix high gives 8 * 8 for SCREEN of 64 high which is the 0.96" variation used for basic_synthv4
 #define COLUMNS      2 
 #define ZONES        16  //simply ROWS by COLUMNS 
-#define QUEUE_SIZE   16
+
 #define OLED_RESET      -1// Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
@@ -40,26 +38,12 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 bool   wantsDisplayRefresh;  
 //these are all arrays of 8 for the 4 rows and 2 columns that fit with text size 1 as set in init
-char      zoneCharArray[ZONES][12]; //Room for 8 char (maybe more) per zone (zone)
-String    zoneStrings[ZONES];
-uint8_t   zoneColor[ZONES]; //monochrome WHITE or BLACK
-uint8_t   zoneBarSize[ZONES] = {24,30,32,40,44,48,52,60,64,64,64,64,64,0,0};  //could be a rectangle of 64 pix width 8 pix height
+String   zoneStrings[ZONES]; //Room for 8 char (maybe more) per zone (zone)
 bool      zoneRedraw[ZONES];
+uint8_t   zoneColor[ZONES]; //monochrome WHITE or BLACK
+volatile uint8_t   zoneBarSize[ZONES] = {24,30,32,40,44,48,52,60,64,64,64,64,64,0,0};  //could be a rectangle of 64 pix width 8 pix height
 
-typedef struct message {  //the point of this is to receive text but process it from the correct core in multiprocessing since this "display" instance keeps failing or crashing
-  char text[12]; //using char array to avoid all the BS of corrupted data hopefully for multi-core
-  uint8_t textLen, zoneColor, zone;
-  bool  unread;
-};
-
-
-message* messageQueue[QUEUE_SIZE];  //lifo queue but not sure I should be using malloc and pointers ... may cause that heap crash issue
-uint8_t  nextMessage;
-
-volatile bool displayReady;
 void setup1306() {
-  Wire.begin();
-  Wire.setClock(10000);
   bool setupDisplayOK = display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);  //SSD1306_EXTERNALVCC or SSD1306_SWITCHCAPVCC
   
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
@@ -71,41 +55,17 @@ void setup1306() {
   // Show initial display buffer contents on the screen --
   // the library initializes this with an Adafruit splash screen.
   
- 
-  display.display();
-  delay(500);
-  //display.invertDisplay(false);
-  display.clearDisplay();
-  //testdrawline(); 
-  
-  
-  
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  
-   for(int i = 0; i<ZONES; i++){
+    Wire.setClock(1000000);
+    display.clearDisplay();
+    display.display();
+    
+    
+    display.setTextSize(1);
+    display.setTextColor(WHITE);
+    for(int i = 0; i<ZONES; i++){
       zoneRedraw[i] = false;
+      zoneStrings[i] = NULL;
     }  
-
-    wantsDisplayRefresh = true;
-    Serial.printf("Oled Init started successfully on");
-    Serial.println(xPortGetCoreID());
-    displayReady = true;
-  }
-
-}
-void setupDisplayMessageQueue(){
-  
-  nextMessage = 0; //means this is an empty queue - increment and decrement as queue items enqueued and dequeued
-  for(int i = 0; i < (QUEUE_SIZE+1); i++){
-    messageQueue[i] = (message*) malloc( sizeof(message));
-    //scanf("           ", messageQueue[i]->text);
-    messageQueue[i]->text[0] = 0;
-    messageQueue[i]->textLen = 0;
-    messageQueue[i]->zoneColor = 0;
-    messageQueue[i]->zone = 0;
-    messageQueue[i]->unread = false;
-  }
     miniScreenString(0,1,"VolAttck",false);
     miniScreenString(1,1,"VolDecay",false);
     miniScreenString(2,1,"VolSus",false);
@@ -118,99 +78,36 @@ void setupDisplayMessageQueue(){
     miniScreenString(9,1,"DelyMixLv",false);
 
     miniScreenString(14,1,"Love Supi",false);
-}
-void enqueueDisplayNote(uint8_t zone, uint8_t c,uint8_t note,bool refresh){
- if(refresh) wantsDisplayRefresh = true; 
- if(nextMessage < (QUEUE_SIZE-1)){
-    messageQueue[nextMessage]->text[0]='N';
-    messageQueue[nextMessage]->text[1]='#';
-    messageQueue[nextMessage]->text[2]=':';
-    messageQueue[nextMessage]->text[3]=' ';
-    messageQueue[nextMessage]->text[4]=note/10+48;
-    messageQueue[nextMessage]->text[5]=note%10+48;
-    messageQueue[nextMessage]->text[6]=0;
-    messageQueue[nextMessage]->zoneColor = c;
-    messageQueue[nextMessage]->zone = zone;
-    messageQueue[nextMessage]->unread = true;
-  
-    nextMessage++;
-    
-  } else
-    Serial.println("Queue over-run");
-}
-void enqueueDisplayMessage( uint8_t zone, uint8_t c,char* s){
-    if(nextMessage < (QUEUE_SIZE-1)){
-     //int8_t messageStringLength = strlen(s);
-      //if (messageStringLength > 11)
-    //    messageStringLength = 11;
-     for(int i = 0; i < 11; i++){
-       messageQueue[nextMessage]->text[i] = s[i];    
-     }  
-      messageQueue[nextMessage]->text[11] = 0; //tested Serial.print(messageQueue[nextMessage]->text); works as a char* type string
-      //strcpy(messageQueue[nextMessage]->text,s);
-      messageQueue[nextMessage]->zoneColor = c;
-      messageQueue[nextMessage]->zone = zone;
-      messageQueue[nextMessage]->unread = true;
-      nextMessage++;
-    } else
-      Serial.println("Queue over-run");
-      
-}
-
-void dequeueDisplayMessage(){
-   if(nextMessage > 0)
-   {
-      nextMessage--; //safe because we already checked its greater than 0 - now we want to get the message, so we decrement to prev
-      //Serial.print(messageQueue[nextMessage]->text);
-      //if(messageQueue[nextMessage]->unread){
-        miniScreenLoad(messageQueue[nextMessage]->zone,messageQueue[nextMessage]->zoneColor,messageQueue[nextMessage]->text,true);
-        messageQueue[nextMessage]->text[0] = 0;
-        messageQueue[nextMessage]->textLen = 0;
-        messageQueue[nextMessage]->zoneColor = 0;
-        messageQueue[nextMessage]->zone = 0;
-        messageQueue[nextMessage]->unread = false;
-        //Serial.println(messageQueue[nextMessage]->text);
-     // }
-    }
-}
-
-
-void miniScreenString(uint8_t zone, uint8_t c, char* s,bool refresh){
-  if(zone > (ZONES-1)) return;  //don't try to write or do anything if this is in error
-  enqueueDisplayMessage(zone,c,s);
-  zoneRedraw[zone] = true;
-  if(refresh) wantsDisplayRefresh = true; 
-}
-
-void miniScreenLoad(uint8_t zone, uint8_t c, char* s,bool refresh){
-  if(zone > (ZONES-1)) return;  //don't try to write or do anything if this is in error
-  //zoneStrings[zone] = String(s); //comment out now we switch to char* or array type
-  uint8_t messageStringLength = 0;//strlen(s); //alternative coding for not string use theory of fixing lib to work in multiprocessing via core0
-
-  while((s[messageStringLength]!=0) && (messageStringLength<12)){ //calculate string length
-    messageStringLength++;
+    wantsDisplayRefresh = true;
+    Serial.printf("Oled Init started successfully on");
+    Serial.println(xPortGetCoreID());
   }
-  //strcpy(zoneCharArray[zone],s);
-  for(int i = 0; i < messageStringLength; i++){
-    zoneCharArray[zone][i] = s[i];
-  } 
-  zoneCharArray[zone][messageStringLength]=0; //terminate string
-  //Serial.print(zoneCharArray[zone]);
-  //Serial.println(s);
+
+}
+ void miniScreenString(uint8_t zone, uint8_t c, String s,bool refresh){
+  if(zone > (ZONES-1)) return;  //don't try to write or do anything if this is in error
+  //zoneStrings[zone] = new char(sizeof(s)+1);
+  //strcpy(zoneStrings[zone], s);
   zoneColor[zone] = c;
   zoneRedraw[zone] = true;
-  if(refresh) wantsDisplayRefresh = true;  //miniScreenRedraw(zone,0) was called in earlier version but we had garbage being written on one version of ESP32 due to different cores
+  Serial.println(zoneStrings[zone]);
+  if(refresh) {
+    
+    wantsDisplayRefresh = false;  //miniScreenRedraw(zone,0) was called in earlier version but we had garbage being written on one version of ESP32 due to different cores
+  }
+    //this should do all the zones set true for screenRefresh as second parameter
 }
 
 
 //prepares message but doesn't trigger display.display() because that messes with processing samples
 //for zones on text size one they are 8 high (32 pix screen height) right half starts at 64
 void miniScreenRedraw(uint8_t zone, bool screenRefresh){
+  Serial.println("redraw from:"+xPortGetCoreID());
   uint8_t row, col;
-  if(screenRefresh) {
-  display.clearDisplay();
+  if(screenRefresh) { // then run through all the zones after clearing the display
+    display.clearDisplay();
     for(int i = 0; i<ZONES; i++){
-       if(strlen(zoneCharArray[i]) > 0){
+       if(strlen(zoneStrings[i]) > 0){
          if(i>1) row = i / 2; else row = 0;
          col = i % 2;
          display.setCursor(64*col,8*row);
@@ -221,14 +118,15 @@ void miniScreenRedraw(uint8_t zone, bool screenRefresh){
             display.setTextColor(BLACK,WHITE);
          
          if(zoneBarSize[i] > 0){
-            miniScreenBarDraw(i);
+            //miniScreenBarDraw(i);
+            display.println(zoneStrings[i]);
          } else
-         display.println(zoneCharArray[zone]); //display.println(zoneStrings[i]);
+         display.println(zoneStrings[i]);// display.println(zoneStrings[i]);
        }
     }
-    wantsDisplayRefresh = HIGH;
-  } else {
-    if(strlen(zoneCharArray[zone]) > 0){
+    wantsDisplayRefresh = true;
+  } else {  // just figure out this one zone reference and refresh that
+    if(strlen(zoneStrings[zone]) > 0){
        if(zone>1) row = zone / 2; else row = 0;
        col = zone % 2;
        display.setCursor(64*col,8*row);
@@ -240,51 +138,44 @@ void miniScreenRedraw(uint8_t zone, bool screenRefresh){
           display.setTextColor(BLACK,WHITE);
        
        if(zoneBarSize[zone] > 0){
-          miniScreenBarDraw(zone);
+        //  miniScreenBarDraw(zone);
+        display.println(zoneStrings[zone]);
        } else
-       display.println(zoneCharArray[zone]);   //display.println(zoneStrings[zone]); previously changed to try and use char array strings zero terminated
-       //Serial.println(zoneCharArray[zone]);
+       display.println(zoneStrings[zone]);//display.println(zoneStrings[zone]);
      }
-     wantsDisplayRefresh = HIGH;
+     wantsDisplayRefresh = true;
   }
   
   
   //  display.display(); is called by displayRefresh on core0task loop but this loading the display memory can be called any time
 }
-void miniScreenBarSize(uint8_t zone, float param){ //optimise to just update one zone for parameter adjusting to do less processing
+ void miniScreenBarSize(uint8_t zone, float param){ //optimise to just update one zone for parameter adjusting to do less processing
   
   zoneBarSize[zone] = 64.0f * param;
-  miniScreenRedraw(zone, 0); // set this up to just update one zone
+  wantsDisplayRefresh = false;  //true but set false for debug
+  zoneRedraw[zone] = true;
+                 //miniScreenRedraw(zone, 0) this thing was called in earlier version - changed to wantsDisplayRefresh = HIGH; so SSD1306 lib function is called from Core0 
+                 //sets the flag so that now miniScreenRedraw is called from the displayRefresh() function which I hope is only called by the Core0task
+   // set this up to just update one zone
 }
+//char *strncpy(char *dest, const char *src, size_t n)
+//Copies up to n characters from the string pointed to, by src to dest.
 
-void miniScreenBarDraw(uint8_t zone){
+ void miniScreenBarDraw(uint8_t zone){
    int x,y;
-   bool stringTerm = false;
+   uint8_t fitInBar = zoneBarSize[zone]/7;
    if(zone>0) y = (zone / 2) * 8; else y = 0;
    x = (zone % 2) *64;
    display.drawRect(x,y, zoneBarSize[zone], 7, SSD1306_WHITE);
    display.setCursor(x,y);
     
    display.setTextColor(BLACK,WHITE);
-   uint8_t fitInBar = zoneBarSize[zone]/7; //numb of characters to fit in bar
-   for(int i=0; i<fitInBar; i++)
-     if(zoneCharArray[zone][i]>0 && !stringTerm) //not terminator
-        display.print(zoneCharArray[zone][i]);
-     else{
-        display.print(" ");
-        stringTerm = true;
-     }
-   //display.print(zoneStrings[zone].substring(0,fitInBar)); //reprint the text  myString.substring(from, to)
-   display.setTextColor(WHITE,BLACK);
-   for(int i=fitInBar; i<11; i++)
-     if(zoneCharArray[zone][i]>0 && !stringTerm) //not terminator
-        display.print(zoneCharArray[zone][i]);
-     else{
-        display.print(" ");
-        stringTerm = true;
-     }
+    //numb of characters to fit in bar
+     display.print(zoneStrings[zone]);
+  // display.print(zoneStrings[zone].substring(0,fitInBar)); //reprint the text  myString.substring(from, to)
+  // display.setTextColor(WHITE,BLACK);
    //display.print(zoneStrings[zone].substring(fitInBar)); 
-    display.print(" ");
+    
  
   //  display.display(); is called by displayRefresh on core0task loop but this loading the display memory can be called any time
 }
@@ -293,37 +184,22 @@ void miniScreenBarDraw(uint8_t zone){
 
 void displayRefresh()
 {
-  
   if(wantsDisplayRefresh){ 
-    wantsDisplayRefresh = false;
-    //Serial.print(String(nextMessage));
-    while(nextMessage>0){
-       dequeueDisplayMessage();
-       //Serial.printf("ESP.getFreeHeap() %d\n", ESP.getFreeHeap());//Serial.println(random(20));
-    }
-    
+    wantsDisplayRefresh = LOW;
+    Serial.print(".");
     for(int zone = 0; zone < ZONES; zone++){
       if(zoneRedraw[zone]){
         miniScreenRedraw(zone,0);
         zoneRedraw[zone] = false;
       }
     }
-    displayReady = true;
     
-   display.display();
+    display.display();
   
   }
 }
 
-void invokeDisplay(){ //i2s_write_sample_32ch2 is the current location
-  //only called from other core0 perhaps - that was idea anyway
-  if(displayReady){
-    displayReady = false;    
 
-    display.display();
-  }
-     
-}
 
 
 void testdrawline() {
@@ -344,7 +220,7 @@ void testdrawline() {
   delay(250);
 
   display.clearDisplay();
-/*
+
   for(i=0; i<display.width(); i+=4) {
     display.drawLine(0, display.height()-1, i, 0, SSD1306_WHITE);
     display.display();
@@ -384,7 +260,7 @@ void testdrawline() {
     delay(1);
   }
 
-  delay(2000); // Pause for 2 seconds */
+  delay(2000); // Pause for 2 seconds
 }
 
 void testdrawrect(void) {
@@ -559,6 +435,10 @@ void testscrolltext(void) {
   display.stopscroll();
   delay(1000);
 }
+
+#define XPOS   0 // Indexes into the 'icons' array in function below
+#define YPOS   1
+#define DELTAY 2
 
 
 #endif

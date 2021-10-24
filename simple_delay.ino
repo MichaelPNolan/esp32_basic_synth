@@ -87,7 +87,6 @@ void Delay_SetLevel(uint8_t unused, float value)
 {
     delayToMix = value;
     #ifdef DISPLAY_1306
-    miniScreenString(9,1,"DelyMixLv",HIGH);
     miniScreenBarSize(9, value);
     #else
     Serial.printf("delay level: %0.3f\n", value);
@@ -98,7 +97,6 @@ void Delay_SetLength(uint8_t unused, float value)
 {
     delayLen = (uint32_t)(((float)MAX_DELAY - 1.0f) * value);
     #ifdef DISPLAY_1306
-    miniScreenString(8,1,"DelyLngth",HIGH);
     miniScreenBarSize(8, value);
     #else
     Serial.printf("delay length: %0.3fms\n", delayLen * (1000.0f / ((float)SAMPLE_RATE)));

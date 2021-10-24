@@ -208,12 +208,14 @@ inline
 void UsbMidi_HandleShortMsg(uint8_t *data)
 {
             //you can call the display miniScreenString(int sector, String s,bool refresh)
-    #ifdef DISPLAY_1306
-    miniScreenString(15,1,"N#:"+String(data[1]),HIGH);
+    #if (defined DISPLAY_1306) && (defined NOTE_TO_SCREEN)
+    //enqueueDisplayNote(15,1,data[1],true);
+    //miniScreenString(15,1,message,true);
+    
     #else
     Serial.printf("shortUSB: %02x %02x %02x\n", data[0], data[1], data[2]);
     #endif
-          
+        
 
     /* forward data to mapped function */
     for (int i = 0; i < usbMidiMapping.usbMidiMappingEntriesCount; i++)
