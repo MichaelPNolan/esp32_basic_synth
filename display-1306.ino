@@ -20,8 +20,8 @@
 
 
 #ifdef DISPLAY_1306
-#include <SPI.h>
-#include <Wire.h>
+//#include <SPI.h>
+//#include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
@@ -213,7 +213,7 @@ void miniScreenRedraw(uint8_t zone, bool screenRefresh){
        if(strlen(zoneCharArray[i]) > 0){
          if(i>1) row = i / 2; else row = 0;
          col = i % 2;
-         display.setCursor(64*col,8*row);
+         display.setCursor(70*col,8*row);
     
          if(zoneColor[i])
             display.setTextColor(WHITE,BLACK);
@@ -231,7 +231,7 @@ void miniScreenRedraw(uint8_t zone, bool screenRefresh){
     if(strlen(zoneCharArray[zone]) > 0){
        if(zone>1) row = zone / 2; else row = 0;
        col = zone % 2;
-       display.setCursor(64*col,8*row);
+       display.setCursor(70*col,8*row);
       // display.println("         "); //hopefully equivalent to clearDisplay for a single zone at this cursor
       //  display.setCursor(64*col,8*row);
        if(zoneColor[zone])
@@ -239,7 +239,7 @@ void miniScreenRedraw(uint8_t zone, bool screenRefresh){
        else
           display.setTextColor(BLACK,WHITE);
        
-       if(zoneBarSize[zone] > 0){
+       if(zoneBarSize[zone] > 0){ // either draw text with bar fill overlay look or if 0 just text only
           miniScreenBarDraw(zone);
        } else
        display.println(zoneCharArray[zone]);   //display.println(zoneStrings[zone]); previously changed to try and use char array strings zero terminated
@@ -260,13 +260,19 @@ void miniScreenBarSize(uint8_t zone, float param){ //optimise to just update one
 void miniScreenBarDraw(uint8_t zone){
    int x,y;
    bool stringTerm = false;
+   uint8_t col= (zone % 2); //ie 0 or 1
+   uint8_t barLen;
    if(zone>0) y = (zone / 2) * 8; else y = 0;
-   x = (zone % 2) *64;
-   display.drawRect(x,y, zoneBarSize[zone], 7, SSD1306_WHITE);
+   x = col *70;  //increased to 70 pix to leave a gap in center between columns was 64 or half way
+   barLen = zoneBarSize[zone];
+   if(barLen>63-(6*col))
+      barLen = 63-(6*col);
+   display.drawRect(x,y, barLen, 7, SSD1306_WHITE); 
    display.setCursor(x,y);
-    
    display.setTextColor(BLACK,WHITE);
-   uint8_t fitInBar = zoneBarSize[zone]/7; //numb of characters to fit in bar
+   
+   uint8_t fitInBar = zoneBarSize[zone]/6; //numb of characters to fit in bar
+   uint8_t stringL = strlen(zoneCharArray[zone]);
    for(int i=0; i<fitInBar; i++)
      if(zoneCharArray[zone][i]>0 && !stringTerm) //not terminator
         display.print(zoneCharArray[zone][i]);
@@ -276,16 +282,16 @@ void miniScreenBarDraw(uint8_t zone){
      }
    //display.print(zoneStrings[zone].substring(0,fitInBar)); //reprint the text  myString.substring(from, to)
    display.setTextColor(WHITE,BLACK);
-   for(int i=fitInBar; i<11; i++)
+   for(int i=fitInBar; i<(10-col); i++) //if col 1 then there is less space to print
      if(zoneCharArray[zone][i]>0 && !stringTerm) //not terminator
         display.print(zoneCharArray[zone][i]);
      else{
-        display.print(" ");
+        if(fitInBar<stringL)
+           display.print(" ");
         stringTerm = true;
      }
-   //display.print(zoneStrings[zone].substring(fitInBar)); 
-    display.print(" ");
- 
+     
+   //display.print(zoneStrings[zone].substring(fitInBar));  
   //  display.display(); is called by displayRefresh on core0task loop but this loading the display memory can be called any time
 }
 
