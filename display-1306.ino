@@ -59,7 +59,7 @@ uint8_t  nextMessage;
 volatile bool displayReady;
 void setup1306() {
   Wire.begin();
-  Wire.setClock(10000);
+  //Wire.setClock(100000);
   bool setupDisplayOK = display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);  //SSD1306_EXTERNALVCC or SSD1306_SWITCHCAPVCC
   
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
