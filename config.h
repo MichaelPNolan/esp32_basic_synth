@@ -16,30 +16,20 @@
 //#define INTERNAL_DAC 
 #define DISPLAY_1306
 #define SCREEN_FPS  3
-#define NOTE_TO_SCREEN
+//#define NOTE_TO_SCREEN
 #define DISPLAY_CORE  0
+#define KEYCAPTURE      1
 //defaults to some kind of external DAC probably of the PCM5102A Breakout board variety
-
+#define BLINK_LED_PIN     14 // D14 on dev board
 #define MIDI_VIA_USB_ENABLED
 /* this will force using const velocity for all notes, remove this to get dynamic velocity */
 //#define MIDI_USE_CONST_VELOCITY
 
 #ifdef ESP32_AUDIO_KIT
 
-/* on board led */
-#define LED_PIN     17 // D14 on dev board
-
-#define ADC_INPUTS  8
-#define ADC_MUL_S0_PIN  23
-#define ADC_MUL_S1_PIN  18
-#define ADC_MUL_S2_PIN  14
-#define ADC_MUL_S3_PIN  5    /* <- not used, this has not been tested */
-#define ADC_MUL_SIG_PIN 12
-
 #else /* ESP32_AUDIO_KIT */
 
-/* on board led */
-#define LED_PIN     14
+
 
 /*
  * Define and connect your PINS to DAC here

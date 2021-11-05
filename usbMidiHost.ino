@@ -205,19 +205,25 @@ void UsbMidi_HandleLiveMsg(uint8_t msg)
     //Serial.printf("live msg\n");
 }
 
+// The majority of MIDI communication consists of multi-byte packets beginning with a status byte followed by one or two data bytes. see https://cmtext.indiana.edu/MIDI/chapter3_midi_data_format.php
+// status byte 1000nnnn data1 0kkkkkkk data2 0vvvvvvv - which - noteoff channel n, key k, velocity v -
+// first 4 bits of status 1001 note 0n, 1010 Poly Key pressure, 1011 Controller, 1100 prog, 1101 channelPressure, 1110 PitchBend
 inline
-void UsbMidi_HandleShortMsg(uint8_t *data)
+void UsbMidi_HandleShortMsg(uint8_t *data) 
 {
+  #ifdef KEYCAPTURE
+     enqueueNoteMessage(data);
+  #endif
  #if (defined DISPLAY_1306) && (defined NOTE_TO_SCREEN)
     if(data[0] == 0x90) // a note on command to reduce the amount of calls
       enqueueDisplayNote(15,1,data[1],true);
+    
     //miniScreenString(15,1,message,true); //i wrote enqueue Display Note to avoid passing a string so stopped using this where I had to create a message string
     
- #else
-      Serial.printf("short: %02x %02x %02x\n", data[0], data[1], data[2]);
+ //#else       Serial.printf("short: %02x %02x %02x\n", data[0], data[1], data[2]);
 
  #endif
-  
+
     /* forward data to mapped function */
     for (int i = 0; i < usbMidiMapping.usbMidiMappingEntriesCount; i++)
     {

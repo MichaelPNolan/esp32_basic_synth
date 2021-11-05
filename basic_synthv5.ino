@@ -90,6 +90,7 @@ void setup()
 
 #ifdef BLINK_LED_PIN
     Blink_Setup();
+    Serial.printf("blink on\n");
 #endif
 
     setupButtons();
@@ -150,7 +151,7 @@ inline
 void Core0TaskInit()
 {
     /* we need a second task for the terminal output */
-   xTaskCreatePinnedToCore(Core0Task, "Core0Task", 20000, NULL, 999, &Core0TaskHnd, 0);  //orig xTaskCreatePinnedToCore(Core0Task, "Core0Task", 8000, NULL, 999, &Core0TaskHnd, 0);
+   xTaskCreatePinnedToCore(Core0Task, "Core0Task", 8000, NULL, 999, &Core0TaskHnd, 0);  //orig xTaskCreatePinnedToCore(Core0Task, "Core0Task", 8000, NULL, 999, &Core0TaskHnd, 0);
 }
 
 void Core0TaskSetup()
@@ -171,8 +172,12 @@ void Core0TaskSetup()
    refreshScreen = 1000/SCREEN_FPS; // 1000/SCREEN_FPS if on core0 loop SAMPLE_RATE/SCREEN_FPS in core1 loop
    setup1306(); //display
    setupDisplayMessageQueue(); //should be initialized (called) from the other core so you can run setup1306() on core0 and other things leave data in the message queue
+   
 #endif
  //  task0cycles = 0; //seems defunct
+ #ifdef KEYCAPTURE
+   setupKeyQueue();
+ #endif
 }
 
 void Core0TaskLoop()
@@ -186,10 +191,13 @@ void Core0TaskLoop()
   #endif
     //AdcSimple();
     processButtons();
+  #ifdef KEYCAPTURE
+    serviceKeyQueue();
+  #endif
+  #ifdef MIDI_VIA_USB_ENABLED
+    UsbMidi_Loop(); 
 
-    #ifdef MIDI_VIA_USB_ENABLED
-      UsbMidi_Loop();
-    #endif
+  #endif
     
 
 
@@ -226,8 +234,9 @@ void Core0Task(void *parameter)
  */
 inline void Loop_1Hz(void)
 {
-   Blink_Process();
-   
+#ifdef BLINK_LED_PIN
+    Blink_Process();
+#endif
 }
 
 
