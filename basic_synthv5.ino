@@ -55,9 +55,12 @@
 /* this is used to add a task to core 0 */
 
 boolean       USBConnected;
+static bool          videoLockout = false;
 uint16_t      task0cycles;
+uint32_t      beatcycles,oneSec,noteCycles;
 uint32_t      refreshScreen;
 static uint32_t CZLoop_cnt_1hz;
+unsigned long timeMicros;
 
 //#define I2S_NODAC  not really sure what this is since it does try to play samples
 #define MIDI_VIA_USB_ENABLED
@@ -65,7 +68,9 @@ static uint32_t CZLoop_cnt_1hz;
 void App_UsbMidiShortMsgReceived(uint8_t *msg)
 {
     Midi_SendShortMessage(msg);
+  #ifdef MIDI_USB_TO_MIDI_SERIAL
     Midi_HandleShortMsg(msg, 8);
+  #endif 
 }
 
 void setup()
@@ -119,7 +124,10 @@ void setup()
     btStop();
     // esp_wifi_deinit();
 #endif
-
+    arpeggiatorSetup();
+    beatcycles = calcWaitPerBeat();
+    noteCycles = noteLengthCycles(); // quarter note default
+    oneSec = SAMPLE_RATE;
 
     Serial.printf("ESP.getFreeHeap() %d\n", ESP.getFreeHeap());
     Serial.printf("ESP.getMinFreeHeap() %d\n", ESP.getMinFreeHeap());
@@ -127,31 +135,30 @@ void setup()
     Serial.printf("ESP.getMaxAllocHeap() %d\n", ESP.getMaxAllocHeap());
   
 
-#if (defined DISPLAY_1306) && ( DISPLAY_CORE == 1)
-   refreshScreen = SAMPLE_RATE/SCREEN_FPS; // 1000/SCREEN_FPS if on core0 loop SAMPLE_RATE/SCREEN_FPS in core1 loop
-   setup1306(); //display
-   setupDisplayMessageQueue(); //should be initialized (called) from the other core so you can run setup1306() on core0 and other things leave data in the message queue
-#endif
 
 #if 0 /* activate this line to get a tone on startup to test the DAC */
     Synth_NoteOn(0, 64, 1.0f);
 #endif
 
-#if (defined ADC_TO_MIDI_ENABLED) || (defined MIDI_VIA_USB_ENABLED)
+#if (defined ADC_TO_MIDI_ENABLED) || (defined MIDI_VIA_USB_ENABLED) || (defined DISPLAY_1306)
     Core0TaskInit();
     
 #endif
-
+ 
+    setupKeyboardCapture();
+  
+    
     Serial.printf("Firmware started successfully\n");
 
 }
-TaskHandle_t Core0TaskHnd;
+TaskHandle_t Core0TaskHnd,Core0USBTaskHnd;
 
 inline
 void Core0TaskInit()
 {
     /* we need a second task for the terminal output */
-   xTaskCreatePinnedToCore(Core0Task, "Core0Task", 8000, NULL, 999, &Core0TaskHnd, 0);  //orig xTaskCreatePinnedToCore(Core0Task, "Core0Task", 8000, NULL, 999, &Core0TaskHnd, 0);
+   xTaskCreatePinnedToCore(Core0Task, "Core0Task", 4000, NULL, 999, &Core0TaskHnd, 0);  //orig xTaskCreatePinnedToCore(Core0Task, "Core0Task", 8000, NULL, 999, &Core0TaskHnd, 0);
+   xTaskCreatePinnedToCore(Core0USBTask, "Core0USBTask", 8000, NULL, 1000, &Core0USBTaskHnd, 0);  //orig xTaskCreatePinnedToCore(Core0Task, "Core0Task", 8000, NULL, 999, &Core0TaskHnd, 0);
 }
 
 void Core0TaskSetup()
@@ -164,20 +171,26 @@ void Core0TaskSetup()
     AdcMul_Init();
 #endif
 #ifdef MIDI_VIA_USB_ENABLED
-    UsbMidi_Setup();
+ //   UsbMidi_Setup();
+
 #endif 
 
 #if (defined DISPLAY_1306) && ( DISPLAY_CORE == 0)
    
-   refreshScreen = 1000/SCREEN_FPS; // 1000/SCREEN_FPS if on core0 loop SAMPLE_RATE/SCREEN_FPS in core1 loop
+   refreshScreen = 100/SCREEN_FPS; // 1000/SCREEN_FPS if on core0 loop SAMPLE_RATE/SCREEN_FPS in core1 loop
    setup1306(); //display
    setupDisplayMessageQueue(); //should be initialized (called) from the other core so you can run setup1306() on core0 and other things leave data in the message queue
    
 #endif
- //  task0cycles = 0; //seems defunct
- #ifdef KEYCAPTURE
-   setupKeyQueue();
- #endif
+ task0cycles = 0; //seems defunct
+
+
+}
+void Core0USBTaskSetup()
+{
+#ifdef MIDI_VIA_USB_ENABLED
+    UsbMidi_Setup();      
+#endif 
 }
 
 void Core0TaskLoop()
@@ -191,38 +204,56 @@ void Core0TaskLoop()
   #endif
     //AdcSimple();
     processButtons();
-  #ifdef KEYCAPTURE
-    serviceKeyQueue();
-  #endif
+  
   #ifdef MIDI_VIA_USB_ENABLED
-    UsbMidi_Loop(); 
-
+   // UsbMidi_Loop();
   #endif
-    
-
-
+  
    #if (defined DISPLAY_1306) && (DISPLAY_CORE == 0)
     CZLoop_cnt_1hz ++;
     if (CZLoop_cnt_1hz >= refreshScreen)   //I think the timing that makes this actually make sense relates to portMAX_DELAY in the i2s_write function see i2s_interface module
     {
       CZLoop_cnt_1hz = 0;
       //miniScreenRedraw(0,1); //completely rewrite screen
-      displayRefresh();
+      if(!videoLockout)
+        displayRefresh();
       
-    }  
+    } 
     #endif
+}
+void Core0USBTaskLoop()
+{
+
+  #ifdef MIDI_VIA_USB_ENABLED
+    UsbMidi_Loop();
+    if(usbPollReadSuccess()){
+   // while(usbPollReadSuccess()){
+      UsbMidi_Loop();
+      
+    }
+  #endif
 }
 
 void Core0Task(void *parameter)
 {
     
     Core0TaskSetup();
-    //Serial.print("Core0 Setup- confirm core:");
-    //Serial.println(xPortGetCoreID());
+
     while (true)
     {
         Core0TaskLoop();
-       
+        //delayMicroseconds(1000); //crashes
+        delay(30);
+       // timeMicros = micros(); this seemed to lead to crashing
+        yield();
+    }
+}
+void Core0USBTask(void *parameter)
+{
+    Core0USBTaskSetup();
+    while (true)
+    {
+        Core0USBTaskLoop();
         delay(1);
         yield();
     }
@@ -232,13 +263,17 @@ void Core0Task(void *parameter)
  * use this if something should happen every second
  * - you can drive a blinking LED for example
  */
-inline void Loop_1Hz(void)
+inline void pulseTempo(void)
 {
 #ifdef BLINK_LED_PIN
     Blink_Process();
 #endif
 }
 
+inline void pulseNote(void)
+{
+  Arpeggiator_Process();
+}
 
 /*
  * our main loop
@@ -249,19 +284,41 @@ float fl_sample, fr_sample;
 
 void loop()
 {
-    static uint32_t loop_cnt_1hz;
+
+    static uint32_t loop_cnt_1beat;
+    static uint32_t loop_cnt_1note;
     static uint8_t loop_count_u8 = 0;
 
     loop_count_u8++;
 
-    loop_cnt_1hz ++;
-    if (loop_cnt_1hz >= SAMPLE_RATE)   //I think the timing that makes this actually make sense relates to portMAX_DELAY in the i2s_write function see i2s_interface module
+
+
+    loop_cnt_1beat++;  // related to tempo or bpm
+    loop_cnt_1note++;  // related to divisions per beat or notes triggered by arpeggiator module
+    
+    if (loop_cnt_1beat >= beatcycles) // trigger beat - originally for 1hz blink process - now blink light when arpeggiator is on at tempo
     {
-        Loop_1Hz();
-        loop_cnt_1hz = 0;
+
+        loop_cnt_1beat = 0;
+        beatcycles = calcWaitPerBeat();
+        noteCycles = noteLengthCycles(); 
+        if(checkArpeggiator())
+          pulseTempo();
+    }
+    if (loop_cnt_1beat == oneSec){ // optional check in case a very slow tempo makes the next beat take a long time - recheck per second
+       beatcycles = calcWaitPerBeat();
+       noteCycles = noteLengthCycles(); 
+       //Serial.println(beatcycles);
     }
 
-   #if (defined DISPLAY_1306) && (DISPLAY_CORE == 1)
+    if (loop_cnt_1note >= noteCycles)
+    {
+      loop_cnt_1note = 0;
+       noteCycles = noteLengthCycles(); 
+       if(checkArpeggiator())
+          pulseNote();
+    }
+ /*  #if (defined DISPLAY_1306) && (DISPLAY_CORE == 1)
     CZLoop_cnt_1hz ++;
     if (CZLoop_cnt_1hz >= refreshScreen)   //I think the timing that makes this actually make sense relates to portMAX_DELAY in the i2s_write function see i2s_interface module
     {
@@ -271,7 +328,7 @@ void loop()
       
     }  
     #endif
-
+ */
     
    
 #ifdef I2S_NODAC
@@ -280,35 +337,52 @@ void loop()
         l_sample = Synth_Process();
     }
 #else
-
+    
     if (i2s_write_stereo_samples(&fl_sample, &fr_sample))
     {
         /* nothing for here */
     }
+    
     Synth_Process(&fl_sample, &fr_sample);
+    
     /*
      * process delay line
      */
+    
     Delay_Process(&fl_sample, &fr_sample);
-
+    
 #endif
 
     /*
      * Midi does not required to be checked after every processed sample
      * - we divide our operation by 8
      */
-    if (loop_count_u8 % 8 == 0)
+    if (loop_count_u8 % 6 == 0)
     {
-       
-     
+
+      videoLockout = true;
       Midi_Process();
       #ifdef MIDI_VIA_USB_ENABLED
+
+       // midiProc1 = true;
         UsbMidi_ProcessSync();
+       // midiProc1 = false;
+
       #endif
-     
+      videoLockout = false;
              
     }
-   
+
+    if (loop_count_u8 % 6 == 1){
+     
+      if(getKeyIndex()>0){
+        //Serial.println("k:"+String(getKeyIndex()));
+        videoLockout = true;  
+
+        serviceKeyQueue();
+        videoLockout = false;
+      } 
+    }   
 }
 
     

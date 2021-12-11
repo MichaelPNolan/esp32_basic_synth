@@ -15,11 +15,36 @@
  * doing math
  * Integrate display calls and how we pick up changes in parameters ... potentiall relocate things out of adc_module from esp32_alone_synth and build up the display-1306 with calls 
  * that can be developed in the code where parameters are changed and we want to reflect that on the screen.
+ * From Version 5 of this basic synth I started to integrate arpeggiator from StandaloneSynth37 project
+ * that uses analogue controls rather than midi control messages - so here we have to make a mixture for the case that there are no analogue controls
+ * wired and mapped to various parameters.
+ * So that project uses banks in the display-1306 - this project currently has a bigger resolution but we need to design banks
+ * and have arp mode, bank mode calls as that project has - one bank is the arpeggiator bank with modes and tempo and a display that changes using the blink library
 */
+// The other project - the stand along keyboard has additional parameter definitions as seen in z_config/easySynth libraries ... eg #define SYNTH_PARAM_VEL_ENV_ATTACK  0
+// that introduces some kind of midiControl remapping interception because there is struct midiControllerMapping tunaWorlde[] = that uses midi to map parameters of the synth module
+// in theory what would be best is to map them using banks and programming that controller to switch bank and call functions in the arp library the same way
+// that the delay library is called  { 0x0, 0x14, "R9", NULL, Delay_SetLength, 2},  because of inline void Midi_ControlChange(uint8_t channel, uint8_t data1, uint8_t data2) mapping those function calls and parameters
+
+#define CONTROL_PARAM_MAX_VOL  14
+// The parameters set in z_config for the arpeggiator and performance bank 1
+#define CONTROL_SEMITONES 18  // keyboard note modifier
+// Arpeggiator parameters  
+#define ARP_STATE 20
+#define ARP_VARIATION 21
+#define ARP_HOLD 22
+#define ARP_NOTE_LEN 23
+#define ARP_BPM 24
+// Performance Parameters
+#define PERF_SEMITONES 25   //master semitone tuning
+#define PERF_SWING 26       //adjustment for beat spacing to create swing effect (triple skip like)
+#define PERF_LFO_PARAM 27   //assign a parameter to sweep with LFO  (low freq oscillator is (usually between .1 and 250Hz) 
+#define PERF_LFO_PERIOD 28  //Frequency of LFO wave
+#define PERF_BEAT_SKIP 29   //put rests in some pattern into arpeggion - set of variations?
 
 
-#define upButton 12 // for use with a single POT to select which parameter
-#define downButton 4 // ditto
+#define upButton 34 // for use with a single POT to select which parameter
+#define downButton 35 // ditto
 bool upButtonState, downButtonState, lastUpButtonState, lastDownButtonState;
 unsigned long lastUBDebounceTime,lastDBDebounceTime;
 unsigned long debounceDelay = 50; 
@@ -31,7 +56,9 @@ struct adc_to_midi_s
 };
 
 int  analogueParamSet = 0;
-int  waveformParamSet = 0;
+int  waveformParamSet = 0; // became unused in v5 when I started remapping for midi 
+uint8_t  bankParamSet = 0; //using button to switch banks
+
 static float adcSingle,adcSingleAve; // added by Michael for use when you don't have analogue multiplexer
 extern float adcSetpoint=0;
 extern struct adc_to_midi_s adcToMidiLookUp[]; /* definition in z_config.ino */
@@ -194,6 +221,8 @@ float *AdcMul_GetValues(void)
 }
 
 
+
+
 bool  AdcSimple(){
     unsigned long int pinValue = 0;
     float delta, error;
@@ -269,25 +298,32 @@ void processButtons(){
     // reset the debouncing timer
     lastUBDebounceTime = millis();
   }
+  digitalWrite(SWITCH2_LED_PIN, readUpButton);
+  
+  
    if (readDownButton != lastDownButtonState) {
     // reset the debouncing timer
     lastDBDebounceTime = millis();
   }
-
+  
+  
   if ((millis() - lastUBDebounceTime) > debounceDelay) {
 
     // if the button state has changed:
     if (readUpButton != upButtonState) {
       upButtonState = readUpButton;
-
+      
       // only toggle the LED if the new button state is HIGH
-      if (upButtonState == LOW) {
-         waveformParamSet = waveformParamSet + 1; //analogueParamSet++;
-         if (waveformParamSet > 7) waveformParamSet=0; //analogueParamSet=0;
-         
-         Synth_SetParam(8, float(waveformParamSet/7.0f));  //SYNTH_PARAM_WAVEFORM_1 = 8 unless unison mode in the its detune
-         //Synth_SetParam(9, float(waveformParamSet/7.0f));
-         Serial.println("WaveformSet: "+ String(waveformParamSet));
+      if (upButtonState == HIGH) {
+         if (waveformParamSet < MAXBANK-1){
+           bankParamSet++;
+           displayBankChange(bankParamSet);
+           if(bankParamSet > MAXBANK-1)
+              bankParamSet = MAXBANK-1;
+           Serial.print("BankParamSet: ");
+           Serial.println(bankParamSet);
+           
+         }
       }
     }
   }
@@ -299,16 +335,64 @@ void processButtons(){
 
       // only toggle the LED if the new button state is HIGH
       if (downButtonState == HIGH) {
-         analogueParamSet = analogueParamSet - 1;
-         if (analogueParamSet < 0) analogueParamSet=7;
-         if (analogueParamSet > 7) analogueParamSet=0;
-         Serial.print("ParamSet: ");
-         Serial.println(analogueParamSet);
+         if (bankParamSet > 0){
+           bankParamSet--;
+         if(bankParamSet < 0)
+           bankParamSet = 0;
+           Serial.print("BankParamSet: ");
+           Serial.println(bankParamSet);
+         }
       }
+      digitalWrite(BLINK_LED_PIN, downButtonState);
     }
   }
+
+
+
+  if(bankParamSet != checkBankValue()) //no need to update screen menu if no change
+    displayBankChange(bankParamSet);
+  
+  if(bankParamSet == 1)
+    useArpToggle(true);
+  else
+    useArpToggle(false);
     // save the reading. Next time through the loop, it'll be the lastButtonState:
   lastUpButtonState = readUpButton;
   lastDownButtonState = readDownButton;
 
+}
+
+
+void Custom_SetParam(uint8_t slider, float value)
+{
+  switch(slider){
+    case CONTROL_PARAM_MAX_VOL:
+      keyboardSetVolume(value);  //see multikeyTo37Midi module where keyboard entry calls notes on/off
+      miniScreenBarSize(0, value);
+      break;
+    case CONTROL_SEMITONES:
+      keyboardSetSemiModifier(value);
+      miniScreenBarSize(1, value);
+      break;
+    case ARP_STATE:
+      setArpState(value);  
+      miniScreenBarSize(2, value);
+      break;
+    case ARP_VARIATION:
+      setArpVariation(value); 
+      miniScreenBarSize(3, value);
+      break;
+    case ARP_HOLD:
+      setArpHold(value);
+      miniScreenBarSize(4, value);  
+      break;
+    case ARP_NOTE_LEN:
+      setArpNoteLength(value);
+      miniScreenBarSize(5, value);  
+      break;
+    case ARP_BPM:
+     setBPM(value+0.01);    //set beats per minute
+     miniScreenString(6,1,string2char("Tmpo:"+String(checkBPM())),HIGH);
+     break;
+  }
 }

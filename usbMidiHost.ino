@@ -48,8 +48,11 @@
  /* Michael Nolan - notes - mi - providing 5v vbus power the communications from my Novation mini launch v2 was unstable. I dropped voltage to 4.35
   *  I don't know exactly what voltage is returning from it but it would get stuck.
   *  Update/refactor Oct 26 to new changes by Marcel License
-
-        
+ * Dec 8 - i wired GPIO17 to the int pin (first on right side 
+ * https://felis.github.io/USB_Host_Shield_2.0/#documentation suggests ESP32 pins and INT is GPIO17 but it was left unused in Marcel's library here
+ * After reading a lot from usbh_midi.h I moved onto usbhub.h and start working on SetHubFeature()
+ * 
+   In future if you want to send USB midi then https://github.com/YuuichiAkagawa/Arduino-UHS2MIDI
   */
 
 #ifdef __CDT_PARSER__
@@ -60,11 +63,12 @@
 /*
  * Connections:
  *  CS: IO5       - MAX3421   pin 1 to D5
- *  INT: IO17 (not used)
+ *  INT: IO17 (not used)  // trying to use from Dec8
  *  SCK: IO18                 pin 4 to D18
  *  MISO: IO19                pin 3 to D19
  *  MOSI: IO23                pin 2 to D23
  */
+#define  ESP32
 #include <usbh_midi.h>
 #include <usbhub.h>
 #include <SPI.h>
@@ -72,9 +76,20 @@
 USB Usb;
 USBH_MIDI  Midi(&Usb);
 
-static void UsbMidi_Poll();
+//static void UsbMidi_Poll();
 
 uint16_t pid, vid;
+bool usbPollLock = false;
+static bool usbPollSuccess = false;
+
+bool usbPollReadSuccess(){
+  if(usbPollSuccess == true)
+  {
+    usbPollSuccess = false;
+    return true;
+  } else
+    return false;
+}
 
 struct usbMidiMappingEntry_s
 {
@@ -97,10 +112,17 @@ struct usbMidiMapping_s
 
 extern struct usbMidiMapping_s usbMidiMapping; /* definition in z_config.ino */
 
+void IRAM_ATTR Ext_INT1_ISR()
+{
+  Serial.println("interrupt");
+}
+
 void UsbMidi_Setup()
 {
+    pinMode(17, INPUT);
+    attachInterrupt(17, Ext_INT1_ISR, CHANGE);
     vid = pid = 0;
-    Serial.begin(115200);
+    //Serial.begin(115200);
     Serial.println("Hello now we can start\n");
 
     if (Usb.Init() == -1)
@@ -110,14 +132,15 @@ void UsbMidi_Setup()
     }//if (Usb.Init() == -1...
     delay(200);
     Serial.println("Usb init done!\n");
+    Serial.println("USB address"+String(Midi.GetAddress()));
 }
 
 uint8_t lastState = 0xFF;
 
+
 void UsbMidi_Loop()
 {
     Usb.Task();
-
     if (lastState != Usb.getUsbTaskState())
     {
         lastState = Usb.getUsbTaskState();
@@ -202,7 +225,7 @@ void UsbMidi_HandleSysEx(uint8_t *buf, uint8_t len)
 inline
 void UsbMidi_HandleLiveMsg(uint8_t msg)
 {
-    //Serial.printf("live msg\n");
+    Serial.printf("live msg\n");
 }
 
 // The majority of MIDI communication consists of multi-byte packets beginning with a status byte followed by one or two data bytes. see https://cmtext.indiana.edu/MIDI/chapter3_midi_data_format.php
@@ -211,17 +234,8 @@ void UsbMidi_HandleLiveMsg(uint8_t msg)
 inline
 void UsbMidi_HandleShortMsg(uint8_t *data) 
 {
-  #ifdef KEYCAPTURE
-     enqueueNoteMessage(data);
-  #endif
- #if (defined DISPLAY_1306) && (defined NOTE_TO_SCREEN)
-    if(data[0] == 0x90) // a note on command to reduce the amount of calls
-      enqueueDisplayNote(15,1,data[1],true);
-    
-    //miniScreenString(15,1,message,true); //i wrote enqueue Display Note to avoid passing a string so stopped using this where I had to create a message string
-    
- //#else       Serial.printf("short: %02x %02x %02x\n", data[0], data[1], data[2]);
-
+ #ifndef DISPLAY_1306  //see  Midi_HandleShortMsg in the midi_interface library where I call decide how to handle certain messages
+    Serial.printf("short: %02x %02x %02x\n", data[0], data[1], data[2]);  //show generic data here 
  #endif
 
     /* forward data to mapped function */
@@ -289,8 +303,9 @@ uint8_t MIDI_handleMsg(uint8_t *data, uint16_t len, uint8_t cable)
 /* process data now */
 void UsbMidi_ProcessSync(void)
 {
+    
     while (msgQueueIn != msgQueueOut)
-    {
+    {   
         UsbMidi_HandleShortMsg(msgQueue[msgQueueOut]);
         msgQueueOut ++;
         if (msgQueueOut >= 128)
@@ -304,7 +319,8 @@ static void UsbMidi_Poll()
 {
     uint8_t bufMidi[MIDI_EVENT_PACKET_SIZE];
     uint16_t  rcvd;
-
+    uint8_t    countReads = 0;
+    usbPollLock = true;
     memset(bufMidi, 0xCC, sizeof(bufMidi));
 
     if (Midi.idVendor() != vid || Midi.idProduct() != pid)
@@ -313,29 +329,43 @@ static void UsbMidi_Poll()
         pid = Midi.idProduct();
         Serial.printf("VID: %04x, PID: %04x\n", vid, pid);
     }
-
-    if (Midi.RecvData(&rcvd,  bufMidi) == 0)
-    {
-        if (rcvd == 0)
-        {
-            /* Some devices sending a lot of empty messages */
-            return;
-        }
-
-        uint8_t *midiData = &bufMidi[0];
-        while (rcvd > 2)
-        {
-            midiData = &midiData[1];
-            int consumed = MIDI_handleMsg(midiData, rcvd, (bufMidi[0] >> 4) & 0xF);
-            midiData = &midiData[consumed];
-            if (consumed > rcvd)
-            {
-                Serial.printf("overrun!\n");
-                return;
-            }
-            rcvd -= consumed;
-        }
-    }
+    //restart:
+    while(countReads < 20){
+      countReads++;
+      if (Midi.RecvData(&rcvd,  bufMidi) == 0)
+      {
+         
+         if (rcvd == 0)
+         {
+              /* Some devices sending a lot of empty messages */     
+              return;
+         } 
+  
+          uint8_t *midiData = &bufMidi[0];
+          while (rcvd > 2)
+          {
+              usbPollSuccess = true;
+              
+              midiData = &midiData[1];
+              int consumed = MIDI_handleMsg(midiData, rcvd, (bufMidi[0] >> 4) & 0xF);
+              midiData = &midiData[consumed];
+              if (consumed > rcvd)
+              {
+                  Serial.printf("overrun!\n");
+                  return;
+              }
+              rcvd -= consumed;
+          }
+          
+      }
+     // __asm__ __volatile__ ("nop\n\t");
+      //__asm__ __volatile__ ("nop\n\t");
+      //__asm__ __volatile__ ("nop\n\t");
+     // __asm__ __volatile__ ("nop\n\t");
+      //delayMicroseconds(1);   //  this was workable as the shortest possible delay but I went for a microsecond length//  
+   
+   }
+   usbPollLock = false;
 }
 
 void UsbMidi_SendRaw(uint8_t *buf, uint8_t cable)
@@ -347,7 +377,9 @@ inline
 void UsbMidi_SendControlChange(uint8_t channel, uint8_t data1, uint8_t data2)
 {
     uint8_t shortBuf[3] = {(uint8_t)(0xB0U + (channel & 0x0FU)), data1, data2};
-    Serial2.write(shortBuf, 3);
+    #ifdef MIDI_TX_PIN
+      Serial2.write(shortBuf, 3);
+    #endif
 }
 
 #endif /* MIDI_VIA_USB_ENABLED */

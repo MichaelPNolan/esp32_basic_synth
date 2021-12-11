@@ -138,6 +138,34 @@ struct midiControllerMapping tunaWorlde[] =
     // Central slider 
    // { 0x0, 0x13, "H1", NULL, NULL, 0},
 };
+
+struct midiControllerMapping tunaWorldeBank1[] =
+{
+
+    { 0x0, 0x0a, "R1", NULL, Custom_SetParam, CONTROL_SEMITONES},
+    { 0x0, 0x0b, "R2", NULL, Custom_SetParam, CONTROL_PARAM_MAX_VOL},
+
+    { 0x0, 0x0c, "R3", NULL, Custom_SetParam, ARP_STATE},                      //Delay_SetLength, 2
+    { 0x0, 0x0d, "R4", NULL, Custom_SetParam, ARP_VARIATION},                       //Delay_SetLevel, 3    //Delay_SetFeedback, 4
+
+    { 0x0, 0x0e, "R5", NULL, Custom_SetParam, ARP_HOLD},
+    { 0x0, 0x0f, "R6", NULL, Custom_SetParam, ARP_NOTE_LEN},
+    { 0x0, 0x10, "R7", NULL, Custom_SetParam, ARP_BPM},
+   // { 0x0, 0x11, "R8", NULL, Custom_SetParam, SYNTH_PARAM_FIL_ENV_RELEASE},
+
+    { 0x0, 0x14, "R9", NULL, Delay_SetLength, 2},          //Delay_SetLevel, 3    //Delay_SetFeedback, 4
+    { 0x0, 0x15, "R10", NULL, Delay_SetLevel, 3},
+    { 0x0, 0x16, "R11", NULL, Delay_SetFeedback, 4},
+
+    { 0x0, 0x17, "R12", NULL, Synth_SetParam, SYNTH_PARAM_MAIN_FILT_CUTOFF},
+    { 0x0, 0x18, "R13", NULL, Synth_SetParam, SYNTH_PARAM_MAIN_FILT_RESO},
+    { 0x0, 0x19, "R14", NULL, Synth_SetParam, SYNTH_PARAM_VOICE_FILT_RESO},
+    { 0x0, 0x1a, "R15", NULL, Synth_SetParam, SYNTH_PARAM_WAVEFORM_1 },
+    { 0x0, 0x1b, "R15", NULL, Synth_SetParam, SYNTH_PARAM_WAVEFORM_2},
+
+    // Central slider 
+   // { 0x0, 0x13, "H1", NULL, NULL, 0},
+};
 /*
  * this mapping  originally used for the edirol pcr-800 - renamed to tiger when
  * I started to do mappings for my homebrew midicontroller
@@ -264,23 +292,37 @@ struct midiControllerMapping tigerMapping[] =
 struct midiMapping_s midiMapping =
 {
     NULL,
-    Synth_NoteOn,
-    Synth_NoteOff,
+    Synth_NoteOn,//Synth_NoteOn, intercepted by the KeyCaptureMidi module Key_NoteOn
+    Synth_NoteOff,//Synth_NoteOff,Key_NoteOff
     Synth_PitchBend,
     Synth_ModulationWheel,
     tunaWorlde,
     sizeof(tunaWorlde) / sizeof(tunaWorlde[0]),
 };
 
+void rewriteMidiControllerMapping(uint8_t mapNum){
+    switch(mapNum)
+    {
+      case 0:
+         midiMapping.controlMapping = tunaWorlde;
+         midiMapping.mapSize = sizeof(tunaWorlde) / sizeof(tunaWorlde[0]);
+        break;
+      case 1:
+        midiMapping.controlMapping = tunaWorldeBank1;
+        midiMapping.mapSize = sizeof(tunaWorldeBank1) / sizeof(tunaWorldeBank1[0]);
+        break;
+    }
+}
+
 #ifdef MIDI_VIA_USB_ENABLED
 struct usbMidiMappingEntry_s usbMidiMappingEntries[] =
 {
     {
-        NULL,
-        App_UsbMidiShortMsgReceived,
-        NULL,
-        NULL,
-        0xFF,
+        NULL,       //send raw
+        App_UsbMidiShortMsgReceived,  //only short message currently mapped see main.ino
+        NULL,       //live message
+        NULL,       //sysEx
+        0xFF,       //cable mask
     },
 };
 

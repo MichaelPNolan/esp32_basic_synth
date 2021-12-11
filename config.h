@@ -18,10 +18,12 @@
 #define SCREEN_FPS  3
 //#define NOTE_TO_SCREEN
 #define DISPLAY_CORE  0
-#define KEYCAPTURE      1
 //defaults to some kind of external DAC probably of the PCM5102A Breakout board variety
 #define BLINK_LED_PIN     14 // D14 on dev board
+#define SWITCH2_LED_PIN 12 
 #define MIDI_VIA_USB_ENABLED
+#define MIDI_USB_TO_MIDI_SERIAL 
+#define MAXBANK 2  // the number of banks being dealt with for display and remapping the midi controller data see display-1306 which holds the bank
 /* this will force using const velocity for all notes, remove this to get dynamic velocity */
 //#define MIDI_USE_CONST_VELOCITY
 

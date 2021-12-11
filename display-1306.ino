@@ -38,7 +38,8 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 
 
-bool   wantsDisplayRefresh;  
+bool      wantsDisplayRefresh;  
+uint8_t   displayBank;
 //these are all arrays of 8 for the 4 rows and 2 columns that fit with text size 1 as set in init
 char      zoneCharArray[ZONES][12]; //Room for 8 char (maybe more) per zone (zone)
 String    zoneStrings[ZONES];
@@ -57,9 +58,11 @@ message* messageQueue[QUEUE_SIZE];  //lifo queue but not sure I should be using 
 uint8_t  nextMessage;
 
 volatile bool displayReady;
+
+
 void setup1306() {
   Wire.begin();
-  //Wire.setClock(100000);
+  Wire.setClock(1000000);
   bool setupDisplayOK = display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);  //SSD1306_EXTERNALVCC or SSD1306_SWITCHCAPVCC
   
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
@@ -71,9 +74,8 @@ void setup1306() {
   // Show initial display buffer contents on the screen --
   // the library initializes this with an Adafruit splash screen.
   
- 
+  //display.ssd1306_command(SSD1306_CHARGEPUMP);
   display.display();
-  delay(500);
   //display.invertDisplay(false);
   display.clearDisplay();
   //testdrawline(); 
@@ -106,19 +108,52 @@ void setupDisplayMessageQueue(){
     messageQueue[i]->zone = 0;
     messageQueue[i]->unread = false;
   }
-    miniScreenString(0,1,"VolAttck",false);
-    miniScreenString(1,1,"VolDecay",false);
-    miniScreenString(2,1,"VolSus",false);
-    miniScreenString(3,1,"VolRleas",false);
-    miniScreenString(4,1,"FiltEnv_A",false);
-    miniScreenString(5,1,"FiltEnv_D",false);
-    miniScreenString(6,1,"FiltEnv_S",false);
-    miniScreenString(7,1,"FiltEnv_R",false);
-    miniScreenString(8,1,"DelyLngth",false);
-    miniScreenString(9,1,"DelyMixLv",false);
-
-    miniScreenString(14,1,"Love Supi",false);
+    displayBankChange(0);
 }
+
+uint8_t checkBankValue(){  //this is now called by the blink module because it does some tempo related graphics for arpeggiator bank
+  return displayBank;
+}
+
+void displayBankChange(uint8_t bank){  //started this for version v5 as I moved towards other options like the arpeggiator module
+    displayBank = bank; //removed check for valid bank because now checked in adc_module where buttons are triggered
+    for(int i=0; i<16;i++)
+      miniScreenBarSize(i,0.0f);
+    display.clearDisplay();
+    switch(displayBank){
+      case 0: //default synth items as per midiMapping
+        setCaptureMode(false);
+        digitalWrite(BLINK_LED_PIN, LOW);
+        miniScreenString(0,1,"VolAttck",false);
+        miniScreenString(1,1,"VolDecay",false);
+        miniScreenString(2,1,"VolSus",false);
+        miniScreenString(3,1,"VolRleas",false);
+        miniScreenString(4,1,"FiltEnv_A",false);
+        miniScreenString(5,1,"FiltEnv_D",false);
+        miniScreenString(6,1,"FiltEnv_S",false);
+        miniScreenString(7,1,"FiltEnv_R",false);
+        miniScreenString(8,1,"DelyLngth",false);
+        miniScreenString(9,1,"DelyMixLv",false);
+        miniScreenString(13,1,"Bank 0", false);
+        miniScreenString(14,1,"Love Supi",false); //this is just a fun branding of my wife's name
+        rewriteMidiControllerMapping(0); // this is from z_config ... but we are going to over-ride this default in other banks to redirect to other function calls for now - later maybe just change expand the definition
+        break;
+      case 1:
+        setCaptureMode(true);
+        miniScreenString(0,1,"MaxVolume",false);
+        miniScreenString(1,1,"SemitAdj",false);
+        miniScreenString(2,1,"Arpeg-0/1",false);
+        miniScreenString(3,1,"ArpVari",false);
+        miniScreenString(4,1,"ArpHold",false);
+        miniScreenString(5,1,"ArpNoteLen",false);
+        miniScreenString(6,1,"Tmpo:",false);
+        miniScreenString(13,1,"Bank 1", false);
+        rewriteMidiControllerMapping(1);
+        break;
+    }
+    wantsDisplayRefresh = true;
+}
+
 void enqueueDisplayNote(uint8_t zone, uint8_t c,uint8_t note,bool refresh){
  if(refresh) wantsDisplayRefresh = true; 
  if(nextMessage < (QUEUE_SIZE-1)){
@@ -153,7 +188,7 @@ void enqueueDisplayMessage( uint8_t zone, uint8_t c,char* s){
       messageQueue[nextMessage]->unread = true;
       nextMessage++;
     } else
-      Serial.println("Queue over-run");
+      Serial.println("DQueue over-run");
       
 }
 
@@ -172,6 +207,10 @@ void dequeueDisplayMessage(){
         //Serial.println(messageQueue[nextMessage]->text);
      // }
     }
+}
+
+uint8_t screenQueueSize(){
+  return nextMessage;
 }
 
 
@@ -231,7 +270,7 @@ void miniScreenRedraw(uint8_t zone, bool screenRefresh){
     if(strlen(zoneCharArray[zone]) > 0){
        if(zone>1) row = zone / 2; else row = 0;
        col = zone % 2;
-       display.setCursor(70*col,8*row);
+       display.setCursor(69*col,8*row);
       // display.println("         "); //hopefully equivalent to clearDisplay for a single zone at this cursor
       //  display.setCursor(64*col,8*row);
        if(zoneColor[zone])

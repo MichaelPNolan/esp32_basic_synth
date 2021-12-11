@@ -41,6 +41,7 @@
  * @see https://www.midi.org/specifications-old/item/table-1-summary-of-midi-message
  * 
  * Update/refactor Oct 26 to new changes by Marcel License
+
  */
 
 
@@ -94,6 +95,7 @@ extern struct midiMapping_s midiMapping; /* definition in z_config.ino */
 
 inline void Midi_NoteOn(uint8_t ch, uint8_t note, uint8_t vel)
 {
+  if(!getCaptureMode()){  // the keyCaptureMidi module may handle  these to enable other playback modes
     if (vel > 127)
     {
         /* we will end up here in case of problems with the MIDI connection */
@@ -105,14 +107,17 @@ inline void Midi_NoteOn(uint8_t ch, uint8_t note, uint8_t vel)
     {
         midiMapping.noteOn(ch, note, pow(2, ((vel * NORM127MUL) - 1.0f) * 6));
     }
+  }
 }
 
 inline void Midi_NoteOff(uint8_t ch, uint8_t note)
 {
+  if(!getCaptureMode()){  // the keyCaptureMidi module may handle  these to enable other playback modes
     if (midiMapping.noteOff != NULL)
     {
         midiMapping.noteOff(ch, note);
     }
+  }
 }
 
 /*
@@ -164,6 +169,9 @@ inline void Midi_HandleShortMsg(uint8_t *data, uint8_t cable)
     {
     /* note on */
     case 0x90:
+    if(getCaptureMode())
+       enqueueNoteMessage(data);
+    else {
         if (data[2] > 0)
         {
             Midi_NoteOn(ch, data[1], data[2]);
@@ -172,9 +180,17 @@ inline void Midi_HandleShortMsg(uint8_t *data, uint8_t cable)
         {
             Midi_NoteOff(ch, data[1]);
         }
+    }
+    #if (defined DISPLAY_1306) && (defined NOTE_TO_SCREEN)
+       if(screenQueueSize()<5)
+          enqueueDisplayNote(15,1,data[1],true);
+    #endif
         break;
     /* note off */
     case 0x80:
+    if(getCaptureMode())
+        enqueueNoteMessage(data);
+    else
         Midi_NoteOff(ch, data[1]);
         break;
     case 0xb0:
@@ -337,7 +353,7 @@ void Midi_Process()
 #endif
 }
 
-void Midi_SendShortMessage(uint8_t *msg)
+void Midi_SendShortMessage(uint8_t *msg)  //Michael: I put a define variable in config.h MIDI_USB_TO_MIDI_SERIAL which is defined if you want to send messages to this - if not this function would be omitted
 {
     Serial2.write(msg, 3);
 }
