@@ -66,6 +66,12 @@
 #define WAVEFORM_MSK	((1<<WAVEFORM_BIT)-1)
 #define WAVEFORM_I(i)	((i) >> (32 - WAVEFORM_BIT)) & WAVEFORM_MSK
 
+/* - i asked Marcel about this
+The bit count is used to configure a specific resolution. It is used to select the bit count of the variable which is used to playback the waveform. In case of 10 bits a sample will be stored in 1024 samples. I do not calculate values in between that makes the code faster but consuming more memory. WAVEFORM_Q4 is used to get the length of a quarter of a waveform. WAVEFORM_I is doing some magic. You can input a 32bit value which should overflow with the same rate of the desired frequency. For example to generate a 441 Hz tone using a sample rate of 44100 Hz you will need an overflow of the value 100 times a second.
+Adding (2^32)/44100 * 441 to a 32 bit variable would cause an overflow 441 times a second. I am using the 10 most significant bits to select the correct value to calculate each sample.
+There are a lot of different ways to generate wave forms. You will find a lot of experiments in my code =)
+*/
+
 
 #define MIDI_NOTE_CNT 128
 uint32_t midi_note_to_add[MIDI_NOTE_CNT]; /* lookup to playback waveforms with correct frequency */
